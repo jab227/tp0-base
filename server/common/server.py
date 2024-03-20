@@ -1,14 +1,23 @@
 import socket
 import logging
+import signal
 
+class SignalSIGTERM(Exception):
+    def __init__(self, signum):
+        self.signal = signal.Signals(signum).name
 
+def sigterm_handler(signum, frame):
+    _ = frame
+    raise SignalSIGTERM(signum)
+    
 class Server:
     def __init__(self, port, listen_backlog):
         # Initialize server socket
+        signal.signal(signal.SIGTERM, sigterm_handler)
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
-
+        
     def run(self):
         """
         Dummy Server loop
@@ -21,8 +30,19 @@ class Server:
         # TODO: Modify this program to handle signal to graceful shutdown
         # the server
         while True:
-            client_sock = self.__accept_new_connection()
-            self.__handle_client_connection(client_sock)
+            client_sock = None
+            try:
+                
+                client_sock = self.__accept_new_connection()            
+                self.__handle_client_connection(client_sock)
+            except SignalSIGTERM as name:
+                logging.info(f'action: signal | result: success | msg: received {name.signal}')                                
+                self._server_socket.close()
+                logging.info(f'action: close_socket | result: success | msg: "closed server socket"')
+                if client_sock:
+                    client_sock.close()
+                    logging.info(f'action:_close socket | result: success | msg: "closed client socket"')
+                return
 
     def __handle_client_connection(self, client_sock):
         """
