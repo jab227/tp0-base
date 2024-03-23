@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"reflect"
 	"testing"
 
@@ -24,22 +25,25 @@ func TestPostBetRequest(t *testing.T) {
 	bet, _ := agency.NewBet(name, surname, dni, birthdate, betNumber)
 	req := protocol.NewBetRequest(agencyID, bet)
 	payload := []byte(fmt.Sprintf("%s,%s,%s,%s,%s", name, surname, dni, birthdate, betNumber))
-	expected_header := protocol.RequestHeader{
+	expectedHeader := protocol.RequestHeader{
 		Kind:        protocol.PostBet,
 		AgencyID:    agencyID,
 		PayloadSize: uint32(len(payload)),
 	}
-	expectec_req := protocol.Request{
-		Header:  expected_header,
+	expectedReq := protocol.Request{
+		Header:  expectedHeader,
 		Payload: payload,
 	}
 
-	if !reflect.DeepEqual(req, expectec_req) {
-		t.Errorf("got %v, want %v", req, expectec_req)
+	if !reflect.DeepEqual(req, expectedReq) {
+		t.Errorf("got %v, want %v", req, expectedReq)
 	}
 
 	var got bytes.Buffer
-	protocol.EncodeRequest(&got, req)
+	err := protocol.EncodeRequest(&got, req)
+	if err != nil {
+		t.Errorf("Unexpected error: %s", err.Error())
+	}
 
 	var want bytes.Buffer
 
@@ -76,9 +80,108 @@ func TestDecodeServerResponse(t *testing.T) {
 	binary.LittleEndian.PutUint32(buf, betNumber)
 	data.Write(buf)
 
-	got := protocol.DecodeResponse(&data)
-	
+	got, err := protocol.DecodeResponse(&data)
+	if err != nil {
+		t.Errorf("Unexpected error: %s", err.Error())
+	}
 	if got != want {
 		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+type ShortWriter struct {
+	buf   *bytes.Buffer
+	calls int
+}
+
+func (s *ShortWriter) Write(b []byte) (int, error) {
+	s.buf.Write(b[:1])
+	s.calls++	
+	if len(b) != 1 {
+		return 1, io.ErrShortWrite
+	}
+	return 1, nil
+}
+
+type ShortReader struct {
+	buf   *bytes.Buffer
+	calls int
+}
+
+func (s *ShortReader) Read(b []byte) (int, error) {
+	s.calls++
+	return s.buf.Read(b[:1])
+}
+
+func TestShortWrite(t *testing.T) {
+	const (
+		name      = "Julio"
+		surname   = "Cortazar"
+		dni       = "52820003"
+		birthdate = "1999-03-17"
+		betNumber = "7574"
+		agencyID  = 42
+	)
+	bet, _ := agency.NewBet(name, surname, dni, birthdate, betNumber)
+	req := protocol.NewBetRequest(agencyID, bet)
+
+	var got bytes.Buffer
+	w := ShortWriter{buf: &got}
+
+	err := protocol.EncodeRequest(&w, req)
+	if err != nil {
+		t.Errorf("Unexpected error: %s", err.Error())
+	}
+
+	var want bytes.Buffer
+	payload := []byte(fmt.Sprintf("%s,%s,%s,%s,%s", name, surname, dni, birthdate, betNumber))
+	want.WriteByte(uint8(protocol.PostBet))
+
+	buf := make([]byte, 4)
+	binary.LittleEndian.PutUint32(buf, uint32(len(payload)))
+	want.Write(buf)
+
+	binary.LittleEndian.PutUint32(buf, uint32(agencyID))
+	want.Write(buf)
+
+	want.Write(payload)
+
+	if !reflect.DeepEqual(got.Bytes(), want.Bytes()) {
+		t.Errorf("got %v, want %v", got.Bytes(), want.Bytes())
+	}
+
+	if w.calls != protocol.RequestHeaderSize+len(payload) {
+		t.Errorf("got %v, want %v", w.calls, protocol.RequestHeaderSize+len(payload))
+	}
+}
+
+func TestShortRead(t *testing.T) {
+	const (
+		agencyID  = 42
+		betNumber = 8
+	)
+	want := protocol.Ack{
+		AgencyID:  agencyID,
+		BetNumber: betNumber,
+	}
+
+	var data bytes.Buffer
+	r := ShortReader{&data, 0}
+	buf := make([]byte, 4)
+	binary.LittleEndian.PutUint32(buf, agencyID)
+	data.Write(buf)
+	binary.LittleEndian.PutUint32(buf, betNumber)
+	data.Write(buf)
+
+	got, err := protocol.DecodeResponse(&r)
+	if err != nil {
+		t.Errorf("Unexpected error: %s", err.Error())
+	}
+	if got != want {
+		t.Errorf("got %v, want %v", got, want)
+	}
+
+	if r.calls != protocol.ResponseSize {
+		t.Errorf("got %v, want %v", r.calls, protocol.ResponseSize)
 	}
 }

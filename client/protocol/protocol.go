@@ -4,6 +4,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+
+	"github.com/pkg/errors"
+)
+
+// Byte sizes
+const (
+	ResponseSize      = 8
+	RequestHeaderSize = 9
 )
 
 type Marshaler interface {
@@ -57,20 +65,39 @@ func (r Request) bytes() []byte {
 	return data.Bytes()
 }
 
-func EncodeRequest(w io.Writer, req Request) {
+func EncodeRequest(w io.Writer, req Request) error {
 	reqBytes := req.bytes()
-	// TODO(juan) handle errors
-	w.Write(reqBytes)
+	written := 0
+	for written < len(reqBytes) {
+		n, err := w.Write(reqBytes[written:])
+		if err != nil {
+			if !errors.Is(err, io.ErrShortWrite) {
+				return errors.Wrap(err, "can't encode request")
+			}
+		}
+		written += n
+	}
+	return nil
 }
 
-func DecodeResponse(r io.Reader) Ack {
+func DecodeResponse(r io.Reader) (Ack, error) {
 	// Make constant
-	buf := make([]byte, 8)
-	r.Read(buf)
+	buf := make([]byte, ResponseSize)
+	read := 0
+	for read < ResponseSize {
+		n, err := r.Read(buf[read:])
+		if err != nil {
+			if errors.Is(err, io.EOF) && read < ResponseSize {
+
+			}
+			return Ack{}, errors.Wrap(err, "can't decode response")
+		}
+		read += n
+	}
 	agencyId := binary.LittleEndian.Uint32(buf[:4])
 	betNumber := binary.LittleEndian.Uint32(buf[4:])
 	return Ack{
 		AgencyID:  agencyId,
 		BetNumber: betNumber,
-	}
+	}, nil
 }
