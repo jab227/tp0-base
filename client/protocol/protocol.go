@@ -11,11 +11,11 @@ import (
 // Byte sizes
 const (
 	ResponseSize      = 4
-	RequestHeaderSize = 9
+	RequestHeaderSize = 13
 )
 
 type Marshaler interface {
-	MarshalBet() []byte
+	MarshalBet() ([]byte, int)
 }
 
 type MessageKind uint8
@@ -27,6 +27,7 @@ const (
 
 type RequestHeader struct {
 	PayloadSize uint32
+	Count       uint32
 	AgencyID    uint32
 	Kind        MessageKind
 }
@@ -41,10 +42,11 @@ type Ack struct {
 }
 
 func NewBetRequest(agencyId uint32, m Marshaler) Request {
-	payload := m.MarshalBet()
+	payload, count := m.MarshalBet()
 	payloadSize := len(payload)
 	header := RequestHeader{
 		PayloadSize: uint32(payloadSize),
+		Count:       uint32(count),
 		AgencyID:    agencyId,
 		Kind:        PostBet,
 	}
@@ -54,11 +56,10 @@ func NewBetRequest(agencyId uint32, m Marshaler) Request {
 func (r Request) bytes() []byte {
 	var data bytes.Buffer
 	data.WriteByte(uint8(r.Header.Kind))
-
-	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, r.Header.PayloadSize)
-	data.Write(buf)
-	binary.LittleEndian.PutUint32(buf, r.Header.AgencyID)
+	buf := make([]byte, 0, 12)
+	buf = binary.LittleEndian.AppendUint32(buf, r.Header.PayloadSize)
+	buf = binary.LittleEndian.AppendUint32(buf, r.Header.Count)
+	buf = binary.LittleEndian.AppendUint32(buf, r.Header.AgencyID)
 	data.Write(buf)
 	data.Write(r.Payload)
 	return data.Bytes()

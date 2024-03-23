@@ -24,7 +24,7 @@ type Bet struct {
 	number    uint32
 }
 
-const timeLayout = "2006-01-2"
+const timeLayout = "2006-01-02"
 
 func NewBet(b Bettor) (Bet, error) {
 	parsedBirthdate, err := time.Parse(timeLayout, b.Birthdate)
@@ -46,11 +46,11 @@ func NewBet(b Bettor) (Bet, error) {
 	}, nil
 }
 
-func (b Bet) MarshalBet() []byte {
+func (b Bet) MarshalBet() ([]byte, int) {
 	return []byte(fmt.Sprintf("%s,%s,%s,%s,%d",
 		b.name,
 		b.surname,
 		b.dni,
 		b.birthdate.Format(timeLayout),
-		b.number))
+		b.number)), 1
 }
