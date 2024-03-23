@@ -14,17 +14,25 @@ import (
 
 func TestPostBetRequest(t *testing.T) {
 
-	const (
-		name      = "Julio"
-		surname   = "Cortazar"
-		dni       = "52820003"
-		birthdate = "1999-03-17"
-		betNumber = "7574"
-		agencyID  = 42
-	)
-	bet, _ := agency.NewBet(name, surname, dni, birthdate, betNumber)
+	bettor := agency.Bettor{
+		Name:      "Julio",
+		Surname:   "Cortazar",
+		DNI:       "52820003",
+		Birthdate: "1999-03-17",
+		BetNumber: "7574",
+	}
+
+	const agencyID = 42
+
+	bet, _ := agency.NewBet(bettor)
 	req := protocol.NewBetRequest(agencyID, bet)
-	payload := []byte(fmt.Sprintf("%s,%s,%s,%s,%s", name, surname, dni, birthdate, betNumber))
+	payload := []byte(fmt.Sprintf("%s,%s,%s,%s,%s",
+		bettor.Name,
+		bettor.Surname,
+		bettor.DNI,
+		bettor.Birthdate,
+		bettor.BetNumber))
+
 	expectedHeader := protocol.RequestHeader{
 		Kind:        protocol.PostBet,
 		AgencyID:    agencyID,
@@ -65,18 +73,14 @@ func TestPostBetRequest(t *testing.T) {
 
 func TestDecodeServerResponse(t *testing.T) {
 	const (
-		agencyID  = 42
 		betNumber = 8
 	)
 	want := protocol.Ack{
-		AgencyID:  agencyID,
 		BetNumber: betNumber,
 	}
 
 	var data bytes.Buffer
-	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, agencyID)
-	data.Write(buf)
+	buf := make([]byte, protocol.ResponseSize)
 	binary.LittleEndian.PutUint32(buf, betNumber)
 	data.Write(buf)
 
@@ -96,7 +100,7 @@ type ShortWriter struct {
 
 func (s *ShortWriter) Write(b []byte) (int, error) {
 	s.buf.Write(b[:1])
-	s.calls++	
+	s.calls++
 	if len(b) != 1 {
 		return 1, io.ErrShortWrite
 	}
@@ -114,15 +118,16 @@ func (s *ShortReader) Read(b []byte) (int, error) {
 }
 
 func TestShortWrite(t *testing.T) {
-	const (
-		name      = "Julio"
-		surname   = "Cortazar"
-		dni       = "52820003"
-		birthdate = "1999-03-17"
-		betNumber = "7574"
-		agencyID  = 42
-	)
-	bet, _ := agency.NewBet(name, surname, dni, birthdate, betNumber)
+	bettor := agency.Bettor{
+		Name:      "Julio",
+		Surname:   "Cortazar",
+		DNI:       "52820003",
+		Birthdate: "1999-03-17",
+		BetNumber: "7574",
+	}
+
+	const agencyID = 42
+	bet, _ := agency.NewBet(bettor)
 	req := protocol.NewBetRequest(agencyID, bet)
 
 	var got bytes.Buffer
@@ -134,7 +139,12 @@ func TestShortWrite(t *testing.T) {
 	}
 
 	var want bytes.Buffer
-	payload := []byte(fmt.Sprintf("%s,%s,%s,%s,%s", name, surname, dni, birthdate, betNumber))
+	payload := []byte(fmt.Sprintf("%s,%s,%s,%s,%s",
+		bettor.Name,
+		bettor.Surname,
+		bettor.DNI,
+		bettor.Birthdate,
+		bettor.BetNumber))
 	want.WriteByte(uint8(protocol.PostBet))
 
 	buf := make([]byte, 4)
@@ -157,19 +167,16 @@ func TestShortWrite(t *testing.T) {
 
 func TestShortRead(t *testing.T) {
 	const (
-		agencyID  = 42
 		betNumber = 8
 	)
 	want := protocol.Ack{
-		AgencyID:  agencyID,
 		BetNumber: betNumber,
 	}
 
 	var data bytes.Buffer
 	r := ShortReader{&data, 0}
 	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, agencyID)
-	data.Write(buf)
+
 	binary.LittleEndian.PutUint32(buf, betNumber)
 	data.Write(buf)
 

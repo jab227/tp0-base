@@ -10,7 +10,7 @@ import (
 
 // Byte sizes
 const (
-	ResponseSize      = 8
+	ResponseSize      = 4
 	RequestHeaderSize = 9
 )
 
@@ -37,7 +37,6 @@ type Request struct {
 }
 
 type Ack struct {
-	AgencyID  uint32
 	BetNumber uint32
 }
 
@@ -88,16 +87,14 @@ func DecodeResponse(r io.Reader) (Ack, error) {
 		n, err := r.Read(buf[read:])
 		if err != nil {
 			if errors.Is(err, io.EOF) && read < ResponseSize {
-
+				return Ack{}, errors.Errorf("Unexpected EOF")
 			}
 			return Ack{}, errors.Wrap(err, "can't decode response")
 		}
 		read += n
 	}
-	agencyId := binary.LittleEndian.Uint32(buf[:4])
-	betNumber := binary.LittleEndian.Uint32(buf[4:])
+	betNumber := binary.LittleEndian.Uint32(buf[:])
 	return Ack{
-		AgencyID:  agencyId,
 		BetNumber: betNumber,
 	}, nil
 }

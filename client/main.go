@@ -13,6 +13,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/common"
 )
 
@@ -40,6 +41,13 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("loop", "period")
 	v.BindEnv("loop", "lapse")
 	v.BindEnv("log", "level")
+
+	// Bet env variables
+	v.BindEnv("bettor", "nombre")
+	v.BindEnv("bettor", "apellido")
+	v.BindEnv("bettor", "documento")
+	v.BindEnv("bettor", "nacimiento")
+	v.BindEnv("bettor", "numbero")
 
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but
@@ -93,6 +101,27 @@ func PrintConfig(v *viper.Viper) {
 	)
 }
 
+func PrintBettor(v *viper.Viper) {
+	log.Infof("action: bet | result: success | client_id: %s | nombre: %s | apellido: %s | nacimiento: %s | documento: %s | numero: %s",
+		v.GetString("id"),
+		v.GetString("bettor.nombre"),
+		v.GetString("bettor.apellido"),
+		v.GetString("bettor.nacimiento"),
+		v.GetString("bettor.documento"),
+		v.GetString("bettor.numero"))
+}
+
+func NewBetFromEnv(v *viper.Viper) agency.Bettor {
+	bettor := agency.Bettor{
+		Name:      v.GetString("bettor.nombre"),
+		Surname:   v.GetString("bettor.apellido"),
+		DNI:       v.GetString("bettor.documento"),
+		Birthdate: v.GetString("bettor.nacimiento"),
+		BetNumber: v.GetString("bettor.numero"),
+	}
+	return bettor
+}
+
 func main() {
 	v, err := InitConfig()
 	if err != nil {
@@ -108,17 +137,18 @@ func main() {
 
 	clientConfig := common.ClientConfig{
 		ServerAddress: v.GetString("server.address"),
-		ID:            v.GetString("id"),
+		ID:            v.GetUint32("id"),
 		LoopLapse:     v.GetDuration("loop.lapse"),
 		LoopPeriod:    v.GetDuration("loop.period"),
 	}
-
-	client := common.NewClient(clientConfig)
+	PrintBettor(v)
+	bettor := NewBetFromEnv(v)
+	client := common.NewClient(bettor, clientConfig)
 
 	signalChannel := make(chan os.Signal, 1)
 	doneChannel := make(chan struct{}, 1)
-	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)	
+	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
 	client.HandleSignals(signalChannel, doneChannel)
-	
+
 	client.StartClientLoop()
 }

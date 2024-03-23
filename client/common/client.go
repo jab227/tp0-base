@@ -1,35 +1,38 @@
 package common
 
 import (
-	"bufio"
-	"fmt"
+	"io"
 	"net"
 	"os"
 	"time"
 
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/protocol"
 	log "github.com/sirupsen/logrus"
 )
 
 // ClientConfig Configuration used by the client
 type ClientConfig struct {
-	ID            string
 	ServerAddress string
 	LoopLapse     time.Duration
 	LoopPeriod    time.Duration
+	ID            uint32
 }
 
 // Client Entity that encapsulates how
 type Client struct {
 	config ClientConfig
 	conn   net.Conn
+	bettor agency.Bettor
 	done   chan struct{}
 }
 
 // NewClient Initializes a new client receiving the configuration
 // as a parameter
-func NewClient(config ClientConfig) *Client {
+func NewClient(bettor agency.Bettor, config ClientConfig) *Client {
 	client := &Client{
 		config: config,
+		bettor: bettor,
 	}
 	return client
 }
@@ -37,7 +40,7 @@ func NewClient(config ClientConfig) *Client {
 // CreateClientSocket Initializes client socket. In case of
 // failure, error is printed in stdout/stderr and exit 1
 // is returned
-func (c *Client) createClientSocket() error {
+func (c *Client) createClientSocket() {
 	conn, err := net.Dial("tcp", c.config.ServerAddress)
 	if err != nil {
 		log.Fatalf(
@@ -47,7 +50,6 @@ func (c *Client) createClientSocket() error {
 		)
 	}
 	c.conn = conn
-	return nil
 }
 
 func (c *Client) HandleSignals(ch <-chan os.Signal, done chan struct{}) {
@@ -63,54 +65,55 @@ func (c *Client) HandleSignals(ch <-chan os.Signal, done chan struct{}) {
 
 }
 
+type ServerResponse struct {
+	ack protocol.Ack
+	err error
+}
+
+// TODO(juan): Introduce buffering to both the encoder and the decoder
+func SendBet(agencyID uint32, bet agency.Bet, rw io.ReadWriter, result chan<- ServerResponse) {
+	req := protocol.NewBetRequest(agencyID, bet)
+	if err := protocol.EncodeRequest(rw, req); err != nil {
+		result <- ServerResponse{err: err}
+		return
+	}
+	ack, err := protocol.DecodeResponse(rw)
+	if err != nil {
+		result <- ServerResponse{err: err}
+		return
+	}
+	result <- ServerResponse{ack: ack}
+	return
+}
+
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop() {
-	// autoincremental msgID to identify every message sent
-	msgID := 1
-
-loop:
-	// Send messages if the loopLapse threshold has not been surpassed
-	for timeout := time.After(c.config.LoopLapse); ; {
-		select {
-		case <-timeout:
-			log.Infof("action: timeout_detected | result: success | client_id: %v",
-				c.config.ID,
-			)
-			break loop
-		case <-c.done:
-			return
-		default:
-		}
-
-		// Create the connection the server in every loop iteration. Send an
-		c.createClientSocket()
-
-		// TODO: Modify the send to avoid short-write
-		fmt.Fprintf(
-			c.conn,
-			"[CLIENT %v] Message N°%v\n",
-			c.config.ID,
-			msgID,
-		)
-		msg, err := bufio.NewReader(c.conn).ReadString('\n')
-		msgID++
-		c.conn.Close()
-
-		if err != nil {
-			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				err,
+	c.createClientSocket()
+	defer c.conn.Close()
+	resultChannel := make(chan ServerResponse, 1)
+	bet, err := agency.NewBet(c.bettor)
+	if err != nil {
+		log.Fatalf("couldn't parse bet from env: %s", err.Error())
+	}
+	go SendBet(c.config.ID, bet, c.conn, resultChannel)
+	select {
+	case res := <-resultChannel:
+		if res.err != nil {
+			log.Errorf("action: error_detected | result: success | client_id: %v | error: %s",
+				c.config.ID, res.err.Error(),
 			)
 			return
 		}
-		log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-			c.config.ID,
-			msg,
-		)
+		log.Infof("action: apuesta_enviada | result: success | documento: %s | numero: %d", c.bettor.DNI, res.ack.BetNumber)
+		return
+	case <-c.done:
+		return
 
-		// Wait a time between sending one message and the next one
-		time.Sleep(c.config.LoopPeriod)
+	case <-time.After(15 * time.Second):
+		log.Infof("action: timeout_detected | result: success | client_id: %v",
+			c.config.ID,
+		)
+		return
 	}
 
-	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
 }

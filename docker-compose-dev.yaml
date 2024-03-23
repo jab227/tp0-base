@@ -20,6 +20,11 @@ services:
     environment:
       - CLI_ID=1
       - CLI_LOG_LEVEL=DEBUG
+      - CLI_BETTOR_NOMBRE=Julio
+      - CLI_BETTOR_APELLIDO=Cortazar
+      - CLI_BETTOR_DOCUMENTO=52820003
+      - CLI_BETTOR_NACIMIENTO=1999-03-17
+      - CLI_BETTOR_NUMERO=7542      
     networks:
       - testing_net
     depends_on:
@@ -34,6 +39,11 @@ services:
     environment:
       - CLI_ID=2
       - CLI_LOG_LEVEL=DEBUG
+      - CLI_BETTOR_NOMBRE=Julio
+      - CLI_BETTOR_APELLIDO=Cortazar
+      - CLI_BETTOR_DOCUMENTO=52820003
+      - CLI_BETTOR_NACIMIENTO=1999-03-17
+      - CLI_BETTOR_NUMERO=7574
     networks:
       - testing_net
     depends_on:
