@@ -83,6 +83,7 @@ func SendBet(agencyID uint32, bet agency.Bet, rw io.ReadWriter, result chan<- Se
 		return
 	}
 	result <- ServerResponse{ack: ack}
+	close(result)
 	return
 }
 
@@ -90,7 +91,7 @@ func SendBet(agencyID uint32, bet agency.Bet, rw io.ReadWriter, result chan<- Se
 func (c *Client) StartClientLoop() {
 	c.createClientSocket()
 	defer c.conn.Close()
-	resultChannel := make(chan ServerResponse, 1)
+	resultChannel := make(chan ServerResponse)
 	bet, err := agency.NewBet(c.bettor)
 	if err != nil {
 		log.Fatalf("couldn't parse bet from env: %s", err.Error())
@@ -102,18 +103,16 @@ func (c *Client) StartClientLoop() {
 			log.Errorf("action: error_detected | result: success | client_id: %v | error: %s",
 				c.config.ID, res.err.Error(),
 			)
-			return
+		} else {
+			log.Infof("action: apuesta_enviada | result: success | documento: %s | numero: %d", c.bettor.DNI, res.ack.BetNumber)
 		}
-		log.Infof("action: apuesta_enviada | result: success | documento: %s | numero: %d", c.bettor.DNI, res.ack.BetNumber)
 		return
 	case <-c.done:
 		return
-
-	case <-time.After(15 * time.Second):
+	case <-time.After(c.config.LoopLapse):
 		log.Infof("action: timeout_detected | result: success | client_id: %v",
 			c.config.ID,
 		)
 		return
 	}
-
 }

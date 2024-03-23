@@ -1,4 +1,5 @@
 version: '3.9'
+
 name: tp0
 services:
   server:
@@ -20,10 +21,10 @@ services:
     environment:
       - CLI_ID=1
       - CLI_LOG_LEVEL=DEBUG
-      - CLI_BETTOR_NOMBRE=Julio
-      - CLI_BETTOR_APELLIDO=Cortazar
-      - CLI_BETTOR_DOCUMENTO=52820003
-      - CLI_BETTOR_NACIMIENTO=1999-03-17
+      - CLI_BETTOR_NOMBRE=Jorge Luis
+      - CLI_BETTOR_APELLIDO=Borges
+      - CLI_BETTOR_DOCUMENTO=52820000
+      - CLI_BETTOR_NACIMIENTO=1899-08-24
       - CLI_BETTOR_NUMERO=7542      
     networks:
       - testing_net
@@ -41,8 +42,8 @@ services:
       - CLI_LOG_LEVEL=DEBUG
       - CLI_BETTOR_NOMBRE=Julio
       - CLI_BETTOR_APELLIDO=Cortazar
-      - CLI_BETTOR_DOCUMENTO=52820003
-      - CLI_BETTOR_NACIMIENTO=1999-03-17
+      - CLI_BETTOR_DOCUMENTO=52820001
+      - CLI_BETTOR_NACIMIENTO=1914-08-26
       - CLI_BETTOR_NUMERO=7574
     networks:
       - testing_net
@@ -51,20 +52,62 @@ services:
     volumes:
       - ./client:/echoclient
 
-  nctest:
-    container_name: nctest
-    build:
-      context: .
-      dockerfile: scripts/Dockerfile
+  client3:
+    container_name: client3
+    image: client:latest
+    entrypoint: /client
     environment:
-      - SERVER_PORT=12345
+      - CLI_ID=3
+      - CLI_LOG_LEVEL=DEBUG
+      - CLI_BETTOR_NOMBRE=Adolfo
+      - CLI_BETTOR_APELLIDO=Bioy Casares
+      - CLI_BETTOR_DOCUMENTO=52820002
+      - CLI_BETTOR_NACIMIENTO=1914-09-15
+      - CLI_BETTOR_NUMERO=1812
     networks:
       - testing_net
-    volumes:
-      - ./scripts:/scripts
     depends_on:
       - server
-    command: ./nc_test.sh
+    volumes:
+      - ./client:/echoclient
+
+  client4:
+    container_name: client4
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=4
+      - CLI_LOG_LEVEL=DEBUG
+      - CLI_BETTOR_NOMBRE=Juan
+      - CLI_BETTOR_APELLIDO=Rulfo
+      - CLI_BETTOR_DOCUMENTO=52820003
+      - CLI_BETTOR_NACIMIENTO=1917-05-16
+      - CLI_BETTOR_NUMERO=2315
+    networks:
+      - testing_net
+    depends_on:
+      - server
+    volumes:
+      - ./client:/echoclient
+
+  client5:
+    container_name: client5
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=5
+      - CLI_LOG_LEVEL=DEBUG
+      - CLI_BETTOR_NOMBRE=Jose
+      - CLI_BETTOR_APELLIDO=Saramago
+      - CLI_BETTOR_DOCUMENTO=52820004
+      - CLI_BETTOR_NACIMIENTO=1922-11-16
+      - CLI_BETTOR_NUMERO=1346
+    networks:
+      - testing_net
+    depends_on:
+      - server
+    volumes:
+      - ./client:/echoclient                  
       
 networks:
   testing_net:

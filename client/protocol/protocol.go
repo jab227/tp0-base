@@ -56,9 +56,9 @@ func (r Request) bytes() []byte {
 	data.WriteByte(uint8(r.Header.Kind))
 
 	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, uint32(r.Header.PayloadSize))
+	binary.LittleEndian.PutUint32(buf, r.Header.PayloadSize)
 	data.Write(buf)
-	binary.LittleEndian.PutUint32(buf, uint32(r.Header.AgencyID))
+	binary.LittleEndian.PutUint32(buf, r.Header.AgencyID)
 	data.Write(buf)
 	data.Write(r.Payload)
 	return data.Bytes()
