@@ -2,10 +2,7 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/pkg/errors"
@@ -114,11 +111,5 @@ func main() {
 	}
 
 	client := common.NewClient(clientConfig)
-
-	signalChannel := make(chan os.Signal, 1)
-	doneChannel := make(chan struct{}, 1)
-	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)	
-	client.HandleSignals(signalChannel, doneChannel)
-	
 	client.StartClientLoop()
 }

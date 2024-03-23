@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"net"
-	"os"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -22,7 +21,6 @@ type ClientConfig struct {
 type Client struct {
 	config ClientConfig
 	conn   net.Conn
-	done   chan struct{}
 }
 
 // NewClient Initializes a new client receiving the configuration
@@ -41,26 +39,13 @@ func (c *Client) createClientSocket() error {
 	conn, err := net.Dial("tcp", c.config.ServerAddress)
 	if err != nil {
 		log.Fatalf(
-			"action: connect | result: fail | client_id: %v | error: %v",
+	        "action: connect | result: fail | client_id: %v | error: %v",
 			c.config.ID,
 			err,
 		)
 	}
 	c.conn = conn
 	return nil
-}
-
-func (c *Client) HandleSignals(ch <-chan os.Signal, done chan struct{}) {
-	c.done = done
-	go func() {
-		signal := <-ch
-		log.Infof("action: signal | result: success | client_id: %v | msg: received %s", c.config.ID, signal)
-		c.conn.Close()
-		log.Infof("action: close_socket | result: success | client_id: %v | msg: closed client socket",
-			c.config.ID)
-		c.done <- struct{}{}
-	}()
-
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
@@ -73,12 +58,10 @@ loop:
 	for timeout := time.After(c.config.LoopLapse); ; {
 		select {
 		case <-timeout:
-			log.Infof("action: timeout_detected | result: success | client_id: %v",
-				c.config.ID,
-			)
+	        log.Infof("action: timeout_detected | result: success | client_id: %v",
+                c.config.ID,
+            )
 			break loop
-		case <-c.done:
-			return
 		default:
 		}
 
@@ -98,15 +81,15 @@ loop:
 
 		if err != nil {
 			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-				c.config.ID,
+                c.config.ID,
 				err,
 			)
 			return
 		}
 		log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-			c.config.ID,
-			msg,
-		)
+            c.config.ID,
+            msg,
+        )
 
 		// Wait a time between sending one message and the next one
 		time.Sleep(c.config.LoopPeriod)
