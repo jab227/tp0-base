@@ -12,7 +12,7 @@ import (
 
 // ClientConfig Configuration used by the client
 type ClientConfig struct {
-	LoopLapse     time.Duration
+	Timeout     time.Duration
 	ServerAddress string
 	BatchSize     int
 	ID            uint32
@@ -65,36 +65,43 @@ func (c *Client) HandleSignals(ch <-chan os.Signal, done chan struct{}) {
 }
 
 type ServerResponse struct {
-	ack  protocol.Response
-	stop bool
-	err  error
+	Response protocol.Response
+	Err      error
 }
 
-func SendBet(timeout time.Duration, conn net.Conn, result chan<- ServerResponse, requests <-chan protocol.Request) {
-	for req := range requests {
-		conn.SetWriteDeadline(time.Now().Add(timeout))
-		if err := protocol.EncodeRequest(conn, req); err != nil {
-			result <- ServerResponse{err: err}
+type HandleContext struct {
+	Conn     net.Conn
+	Results  chan<- ServerResponse
+	Done     chan<- struct{}
+	Requests <-chan protocol.Request
+	Timeout  time.Duration
+}
+
+func HandleBets(ctx *HandleContext) {
+	for req := range ctx.Requests {
+		ctx.Conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
+		if err := protocol.EncodeRequest(ctx.Conn, req); err != nil {
+			ctx.Results <- ServerResponse{Err: err}
 			return
 		}
-		conn.SetReadDeadline(time.Now().Add(timeout))
-		ack, err := protocol.DecodeResponse(conn)
+		ctx.Conn.SetReadDeadline(time.Now().Add(ctx.Timeout))
+		ack, err := protocol.DecodeResponse(ctx.Conn)
 		if err != nil {
-			result <- ServerResponse{err: err}
+			ctx.Results <- ServerResponse{Err: err}
 			return
 		}
-		result <- ServerResponse{ack: ack}
+		ctx.Results <- ServerResponse{Response: ack}
 	}
 
 	// This may fail but all the bets where sent
-	conn.SetWriteDeadline(time.Now().Add(timeout))
-	req := protocol.Request{Header: protocol.RequestHeader{Kind: protocol.EndBets}}
-	if err := protocol.EncodeRequest(conn, req); err != nil {
-		result <- ServerResponse{err: err}
+	ctx.Conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
+	req := protocol.Done{}
+	if err := protocol.EncodeRequest(ctx.Conn, req); err != nil {
+		ctx.Results <- ServerResponse{Err: err}
 		return
 	}
-	
-	result <- ServerResponse{stop: true}
+
+	ctx.Done <- struct{}{}
 
 	return
 }
@@ -102,28 +109,44 @@ func SendBet(timeout time.Duration, conn net.Conn, result chan<- ServerResponse,
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop() {
 	c.createClientSocket()
-	defer c.conn.Close()
+	defer func() {
+		c.conn.Close()
+		c.bets.Close()
+	}()
 
 	resultChannel := make(chan ServerResponse)
 	requestChannel := make(chan protocol.Request)
 
-	go BatchReader(c.config.ID, c.bets, c.config.BatchSize, requestChannel)
-	go SendBet(c.config.LoopLapse, c.conn, resultChannel, requestChannel)
+	batchCtx := &BatchContext{
+		ID:        c.config.ID,
+		Reader:    c.bets,
+		BatchSize: c.config.BatchSize,
+		Requests:  requestChannel,
+	}
+	go HandleBatchs(batchCtx)
+
+	handleCtx := &HandleContext{
+		Conn:     c.conn,
+		Results:  resultChannel,
+		Done:     c.done,
+		Requests: requestChannel,
+		Timeout:  c.config.Timeout,
+	}
+
+	go HandleBets(handleCtx)
 
 	for {
 		select {
 		case res := <-resultChannel:
-			if res.err != nil {
+			if res.Err != nil {
 				log.Errorf("action: error_detected | result: success | client_id: %v | error: %s",
-					c.config.ID, res.err.Error(),
+					c.config.ID, res.Err.Error(),
 				)
 				return
 			}
-			if res.stop {
-				return
-			}
+
 			// CHECK(juan): Do I log all the bets?
-			log.Infof("action: apuestas_enviadas | result: success | cantidad: %d", res.ack.BetCount)
+			log.Infof("action: apuestas_enviadas | result: success | cantidad: %d", res.Response.BetCount)
 		case <-c.done:
 			return
 		}

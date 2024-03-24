@@ -41,6 +41,7 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("server", "address")
 	v.BindEnv("loop", "period")
 	v.BindEnv("loop", "lapse")
+	v.BindEnv("socket", "timeout")
 	v.BindEnv("log", "level")
 
 	// The path to the file from which the bets will be read
@@ -130,7 +131,7 @@ func main() {
 		ServerAddress: v.GetString("server.address"),
 		ID:            v.GetUint32("id"),
 		BatchSize:     v.GetInt("batch.size"),
-		LoopLapse:     v.GetDuration("loop.lapse"),
+		Timeout:       v.GetDuration("socket.timeout"),
 	}
 
 	path := v.GetString("bets.path")

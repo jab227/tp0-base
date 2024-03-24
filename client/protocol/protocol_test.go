@@ -12,63 +12,133 @@ import (
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/protocol"
 )
 
-func TestPostBetRequest(t *testing.T) {
-	bettor := agency.Bettor{
-		Name:      "Julio",
-		Surname:   "Cortazar",
-		DNI:       "52820003",
-		Birthdate: "1999-03-17",
-		BetNumber: "7574",
-	}
+func TestEncodeRequest(t *testing.T) {
+	t.Run("make a bet", func(t *testing.T) {
+		bettor := agency.Bettor{
+			Name:      "Julio",
+			Surname:   "Cortazar",
+			DNI:       "52820003",
+			Birthdate: "1999-03-17",
+			BetNumber: "7574",
+		}
 
-	const (
-		agencyID = 42
-		betCount = 1
-	)
+		const (
+			agencyID = 42
+			betCount = 1
+		)
 
-	bet, _ := agency.NewBet(bettor)
+		bet, _ := agency.NewBet(bettor)
 
-	req := protocol.NewBetRequest(agencyID, bet)
-	payload := []byte(fmt.Sprintf("%s,%s,%s,%s,%s",
-		bettor.Name,
-		bettor.Surname,
-		bettor.DNI,
-		bettor.Birthdate,
-		bettor.BetNumber))
+		expectedPayload := []byte(fmt.Sprintf("%s,%s,%s,%s,%s",
+			bettor.Name,
+			bettor.Surname,
+			bettor.DNI,
+			bettor.Birthdate,
+			bettor.BetNumber))
 
-	expectedHeader := protocol.RequestHeader{
-		Kind:        protocol.SendBets,
-		AgencyID:    agencyID,
-		Count:       1,
-		PayloadSize: uint32(len(payload)),
-	}
-	expectedReq := protocol.Request{
-		Header:  expectedHeader,
-		Payload: payload,
-	}
+		payload, count := bet.MarshalBet()
 
-	if !reflect.DeepEqual(req, expectedReq) {
-		t.Errorf("got %v, want %v", req, expectedReq)
-	}
+		if !reflect.DeepEqual(payload, expectedPayload) {
+			t.Errorf("got %v, want %v", payload, expectedPayload)
+		}
 
-	var got bytes.Buffer
-	err := protocol.EncodeRequest(&got, req)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err.Error())
-	}
+		if count != betCount {
+			t.Errorf("got %v, want %v", count, betCount)
+		}
 
-	want := getRequestBytes(payload, agencyID, betCount)
+		req := protocol.Bet{
+			PayloadSize: uint32(len(payload)),
+			Count:       uint32(count),
+			AgencyID:    agencyID,
+			Payload:     payload,
+		}
 
-	if !reflect.DeepEqual(got.Bytes(), want) {
-		t.Errorf("got %v, want %v", got.Bytes(), want)
-	}
+		var got bytes.Buffer
+		err := protocol.EncodeRequest(&got, req)
+		if err != nil {
+			t.Errorf("Unexpected error: %s", err.Error())
+		}
+
+		want := getRequestBytes(expectedPayload, agencyID, betCount)
+
+		if !reflect.DeepEqual(got.Bytes(), want) {
+			t.Errorf("got %v, want %v", got.Bytes(), want)
+		}
+	})
+
+	t.Run("make multiple bets", func(t *testing.T) {
+		bettor := agency.Bettor{
+			Name:      "Julio",
+			Surname:   "Cortazar",
+			DNI:       "52820003",
+			Birthdate: "1999-03-17",
+			BetNumber: "7574",
+		}
+
+		const (
+			agencyID = 42
+			betCount = 1
+		)
+
+		bet, _ := agency.NewBet(bettor)
+
+		expectedPayload := []byte(fmt.Sprintf("%s,%s,%s,%s,%s",
+			bettor.Name,
+			bettor.Surname,
+			bettor.DNI,
+			bettor.Birthdate,
+			bettor.BetNumber))
+
+		payload, count := bet.MarshalBet()
+
+		if !reflect.DeepEqual(payload, expectedPayload) {
+			t.Errorf("got %v, want %v", payload, expectedPayload)
+		}
+
+		if count != betCount {
+			t.Errorf("got %v, want %v", count, betCount)
+		}
+
+		req := protocol.Bet{
+			PayloadSize: uint32(len(payload)),
+			Count:       uint32(count),
+			AgencyID:    agencyID,
+			Payload:     payload,
+		}
+
+		var got bytes.Buffer
+		err := protocol.EncodeRequest(&got, req)
+		if err != nil {
+			t.Errorf("Unexpected error: %s", err.Error())
+		}
+
+		want := getRequestBytes(expectedPayload, agencyID, betCount)
+
+		if !reflect.DeepEqual(got.Bytes(), want) {
+			t.Errorf("got %v, want %v", got.Bytes(), want)
+		}
+	})
+
+	t.Run("make done request", func(t *testing.T) {
+		req := protocol.Done{}
+		var got bytes.Buffer
+		err := protocol.EncodeRequest(&got, req)
+		if err != nil {
+			t.Errorf("Unexpected error: %s", err.Error())
+		}
+		want := []byte{protocol.MessageDone}
+		if !reflect.DeepEqual(got.Bytes(), want) {
+			t.Errorf("got %v, want %v", got.Bytes(), want)
+		}
+
+	})
 
 }
 
 func getRequestBytes(payload []byte, agencyID uint32, betCount uint32) []byte {
 	var want bytes.Buffer
 
-	want.WriteByte(uint8(protocol.SendBets))
+	want.WriteByte(uint8(protocol.MessageBet))
 
 	buf := make([]byte, 0, 12)
 	buf = binary.LittleEndian.AppendUint32(buf, uint32(len(payload)))
@@ -86,13 +156,13 @@ func TestDecodeServerResponse(t *testing.T) {
 		betNumberB = 12
 	)
 	want := protocol.Response{
-		Kind:       protocol.Acknowledge,
+		Kind:       protocol.MessageAcknowledge,
 		BetCount:   2,
 		BetNumbers: []uint32{betNumberA, betNumberB},
 	}
 
 	var buf bytes.Buffer
-	buf.WriteByte(protocol.Acknowledge)
+	buf.WriteByte(protocol.MessageAcknowledge)
 	bs := make([]byte, 0, 12)
 	bs = binary.LittleEndian.AppendUint32(bs, want.BetCount)
 	bs = binary.LittleEndian.AppendUint32(bs, want.BetNumbers[0])
@@ -146,13 +216,13 @@ func TestShortWrite(t *testing.T) {
 	)
 
 	bet, _ := agency.NewBet(bettor)
-	req := protocol.NewBetRequest(agencyID, bet)
-	payload := []byte(fmt.Sprintf("%s,%s,%s,%s,%s",
-		bettor.Name,
-		bettor.Surname,
-		bettor.DNI,
-		bettor.Birthdate,
-		bettor.BetNumber))
+	payload, count := bet.MarshalBet()
+	req := protocol.Bet{
+		PayloadSize: uint32(len(payload)),
+		Count:       uint32(count),
+		AgencyID:    agencyID,
+		Payload:     payload,
+	}
 
 	var got bytes.Buffer
 	w := ShortWriter{buf: &got}
@@ -180,13 +250,13 @@ func TestShortRead(t *testing.T) {
 		expectedCalls = 13 // Sizeof Ack message in bytes
 	)
 	want := protocol.Response{
-		Kind:       protocol.Acknowledge,
+		Kind:       protocol.MessageAcknowledge,
 		BetCount:   2,
 		BetNumbers: []uint32{betNumberA, betNumberB},
 	}
 
 	var buf bytes.Buffer
-	buf.WriteByte(protocol.Acknowledge)
+	buf.WriteByte(protocol.MessageAcknowledge)
 	bs := make([]byte, 0, 12)
 	bs = binary.LittleEndian.AppendUint32(bs, want.BetCount)
 	bs = binary.LittleEndian.AppendUint32(bs, want.BetNumbers[0])

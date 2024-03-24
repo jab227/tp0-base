@@ -83,12 +83,16 @@ func (b *Batcher) ReadBatch() (bool, error) {
 	return b.notBatched == 0, nil
 }
 
-func BatchReader(agencyID uint32, r io.ReadCloser, batchSize int, requests chan<- protocol.Request) {
-	defer func() {
-		close(requests)
-		r.Close()
-	}()
-	batcher := NewBatcher(r, batchSize)
+type BatchContext struct {
+	ID        uint32
+	Reader    io.Reader
+	BatchSize int
+	Requests  chan<- protocol.Request
+}
+
+func HandleBatchs(ctx *BatchContext) {
+	defer close(ctx.Requests)
+	batcher := NewBatcher(ctx.Reader, ctx.BatchSize)
 
 	for {
 		finished, err := batcher.ReadBatch()
@@ -98,10 +102,16 @@ func BatchReader(agencyID uint32, r io.ReadCloser, batchSize int, requests chan<
 		if err != nil {
 			// Assume that the previous batches were ok
 			// Close the channel and don't read more bets
-			log.Errorf("action: error_detected | result: success | client_id: %v | error: %s", agencyID, err.Error())
+			log.Errorf("action: error_detected | result: success | client_id: %v | error: %s", ctx.ID, err.Error())
 			break
 		}
-		req := protocol.NewBetRequest(agencyID, batcher)
-		requests <- req
+		payload, count := batcher.MarshalBet()
+		req := protocol.Bet{
+			PayloadSize: uint32(len(payload)),
+			Count:       uint32(count),
+			AgencyID:    ctx.ID,
+			Payload:     payload,
+		}
+		ctx.Requests <- req
 	}
 }

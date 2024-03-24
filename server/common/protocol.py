@@ -5,42 +5,35 @@ from dataclasses import dataclass
 import common.utils as utils
 
 class MessageKind(Enum):
-    SEND_BETS = 0
+    BET = 0
     ACKNOWLEDGE = 1
-    END_BETS = 2
+    DONE = 2
 
 SIZEOF_UINT32 = 4
 PAYLOAD_FIELD_COUNT = 5
 
 @dataclass
 class Header:
-    kind: MessageKind
     payload_size: int = 0
     count: int = 0
     agency_id: int = 0
 
-    HEADER_SIZE = 13
+    HEADER_SIZE = 12
 
 
 @dataclass
-class Ack:
+class Acknowledge:
     bet_count: int
     bet_numbers: list[int]    
     kind: MessageKind = MessageKind.ACKNOWLEDGE
 
 
     
-def decode_header(b: bytes) -> Optional[Header]:
-    try:
-        kind = MessageKind(b[0])
-    except Exception:
-        return None
-    if kind is MessageKind.END_BETS:
-        return Header(kind=kind)
-    payload_size = int.from_bytes(b[1:5], byteorder='little')
-    count = int.from_bytes(b[5:9], byteorder='little')    
-    agency_id = int.from_bytes(b[9:Header.HEADER_SIZE], byteorder='little')
-    return Header(kind, payload_size, count, agency_id)
+def decode_bet_message(b: bytes) -> Optional[Header]:
+    payload_size = int.from_bytes(b[0:4], byteorder='little')
+    count = int.from_bytes(b[4:8], byteorder='little')    
+    agency_id = int.from_bytes(b[8:Header.HEADER_SIZE], byteorder='little')
+    return Header(payload_size, count, agency_id)
 
 
 def parse_payload(header: Header, payload: bytes) -> list[utils.Bet]:
@@ -58,7 +51,7 @@ def parse_payload(header: Header, payload: bytes) -> list[utils.Bet]:
     return bets
 
 
-def encode_ack(ack: Ack) -> bytes:
+def encode_ack(ack: Acknowledge) -> bytes:
     kind = int.to_bytes(ack.kind.value, 1, byteorder='little')
     bet_count = int.to_bytes(ack.bet_count, SIZEOF_UINT32, byteorder='little')
     ack_bytes = kind + bet_count
@@ -67,3 +60,9 @@ def encode_ack(ack: Ack) -> bytes:
     return ack_bytes
     
 
+
+def decode_kind(b: bytes) -> Optional[MessageKind]:
+    try:
+        return MessageKind(b[0])
+    except Exception:
+        return None
