@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -42,12 +44,10 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("loop", "lapse")
 	v.BindEnv("log", "level")
 
-	// Bet env variables
-	v.BindEnv("bettor", "nombre")
-	v.BindEnv("bettor", "apellido")
-	v.BindEnv("bettor", "documento")
-	v.BindEnv("bettor", "nacimiento")
-	v.BindEnv("bettor", "numbero")
+	// The path to the file from which the bets will be read
+	v.BindEnv("bets", "path")
+	// The size of the batches/chunks
+	v.BindEnv("batch", "size")
 
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but
@@ -101,25 +101,17 @@ func PrintConfig(v *viper.Viper) {
 	)
 }
 
-func PrintBettor(v *viper.Viper) {
-	log.Infof("action: bet | result: success | client_id: %s | nombre: %s | apellido: %s | nacimiento: %s | documento: %s | numero: %s",
-		v.GetString("id"),
-		v.GetString("bettor.nombre"),
-		v.GetString("bettor.apellido"),
-		v.GetString("bettor.nacimiento"),
-		v.GetString("bettor.documento"),
-		v.GetString("bettor.numero"))
+type BufferedReadCloser struct {
+	reader *bufio.Reader
+	closer io.Closer
 }
 
-func NewBetFromEnv(v *viper.Viper) agency.Bettor {
-	bettor := agency.Bettor{
-		Name:      v.GetString("bettor.nombre"),
-		Surname:   v.GetString("bettor.apellido"),
-		DNI:       v.GetString("bettor.documento"),
-		Birthdate: v.GetString("bettor.nacimiento"),
-		BetNumber: v.GetString("bettor.numero"),
-	}
-	return bettor
+func (b *BufferedReadCloser) Read(p []byte) (int, error) {
+	return b.reader.Read(p)
+}
+
+func (b *BufferedReadCloser) Close() error {
+	return b.closer.Close()
 }
 
 func main() {
@@ -138,12 +130,21 @@ func main() {
 	clientConfig := common.ClientConfig{
 		ServerAddress: v.GetString("server.address"),
 		ID:            v.GetUint32("id"),
+		BatchSize:     v.GetInt("batch.size"),
 		LoopLapse:     v.GetDuration("loop.lapse"),
-		LoopPeriod:    v.GetDuration("loop.period"),
 	}
-	PrintBettor(v)
-	bettor := NewBetFromEnv(v)
-	client := common.NewClient(bettor, clientConfig)
+
+	path := v.GetString("bets.path")
+	f, err := os.Open(path)
+	if err != nil {
+		log.Fatalf("couldn't open bets file: %s", err.Error())
+	}
+
+	rc := &BufferedReadCloser{
+		reader: bufio.NewReader(f),
+		closer: f,
+	}
+	client := common.NewClient(rc, clientConfig)
 
 	signalChannel := make(chan os.Signal, 1)
 	doneChannel := make(chan struct{}, 1)

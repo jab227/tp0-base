@@ -6,16 +6,15 @@ import (
 	"os"
 	"time"
 
-	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/protocol"
 	log "github.com/sirupsen/logrus"
 )
 
 // ClientConfig Configuration used by the client
 type ClientConfig struct {
-	ServerAddress string
 	LoopLapse     time.Duration
-	LoopPeriod    time.Duration
+	ServerAddress string
+	BatchSize     int
 	ID            uint32
 }
 
@@ -23,16 +22,15 @@ type ClientConfig struct {
 type Client struct {
 	config ClientConfig
 	conn   net.Conn
-	bettor agency.Bettor
+	bets   io.ReadCloser
 	done   chan struct{}
 }
 
 // NewClient Initializes a new client receiving the configuration
 // as a parameter
-func NewClient(bettor agency.Bettor, config ClientConfig) *Client {
+func NewClient(bets io.ReadCloser, config ClientConfig) *Client {
 	client := &Client{
 		config: config,
-		bettor: bettor,
 	}
 	return client
 }
@@ -70,49 +68,48 @@ type ServerResponse struct {
 	err error
 }
 
-// TODO(juan): Introduce buffering to both the encoder and the decoder
-func SendBet(agencyID uint32, bet agency.Bet, rw io.ReadWriter, result chan<- ServerResponse) {
-	req := protocol.NewBetRequest(agencyID, bet)
-	if err := protocol.EncodeRequest(rw, req); err != nil {
-		result <- ServerResponse{err: err}
-		return
+func SendBet(timeout time.Duration, conn net.Conn, result chan<- ServerResponse, requests <-chan protocol.Request) {
+	for req := range requests {
+		conn.SetReadDeadline(time.Now().Add(timeout))
+		if err := protocol.EncodeRequest(conn, req); err != nil {
+			result <- ServerResponse{err: err}
+			return
+		}
+
+		conn.SetWriteDeadline(time.Now().Add(timeout))
+		ack, err := protocol.DecodeResponse(conn)
+		if err != nil {
+			result <- ServerResponse{err: err}
+			return
+		}
+		result <- ServerResponse{ack: ack}
 	}
-	ack, err := protocol.DecodeResponse(rw)
-	if err != nil {
-		result <- ServerResponse{err: err}
-		return
-	}
-	result <- ServerResponse{ack: ack}
-	close(result)
-	return
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop() {
 	c.createClientSocket()
 	defer c.conn.Close()
+
 	resultChannel := make(chan ServerResponse)
-	bet, err := agency.NewBet(c.bettor)
-	if err != nil {
-		log.Fatalf("couldn't parse bet from env: %s", err.Error())
-	}
-	go SendBet(c.config.ID, bet, c.conn, resultChannel)
-	select {
-	case res := <-resultChannel:
-		if res.err != nil {
-			log.Errorf("action: error_detected | result: success | client_id: %v | error: %s",
-				c.config.ID, res.err.Error(),
-			)
-		} else {
-			log.Infof("action: apuesta_enviada | result: success | documento: %s | numero: %d", c.bettor.DNI, res.ack.BetNumber)
+	requestChannel := make(chan protocol.Request)
+
+	go BatchReader(c.config.ID, c.bets, c.config.BatchSize, requestChannel)
+	go SendBet(c.config.LoopLapse, c.conn, resultChannel, requestChannel)
+
+	for {
+		select {
+		case res := <-resultChannel:
+			if res.err != nil {
+				log.Errorf("action: error_detected | result: success | client_id: %v | error: %s",
+					c.config.ID, res.err.Error(),
+				)
+				break
+			}
+			// CHECK(juan): Do I log all the bets?
+			log.Infof("action: apuestas_enviadas | result: success | cantidad: %d", res.ack.BetCount)
+		case <-c.done:
+			return
 		}
-		return
-	case <-c.done:
-		return
-	case <-time.After(c.config.LoopLapse):
-		log.Infof("action: timeout_detected | result: success | client_id: %v",
-			c.config.ID,
-		)
-		return
 	}
 }

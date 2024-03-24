@@ -9,6 +9,7 @@ import (
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/protocol"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 const KB = (1 << 10)
@@ -80,4 +81,27 @@ func (b *Batcher) ReadBatch() (bool, error) {
 	}
 	b.notBatched += read
 	return b.notBatched == 0, nil
+}
+
+func BatchReader(agencyID uint32, r io.ReadCloser, batchSize int, requests chan<- protocol.Request) {
+	defer func() {
+		close(requests)
+		r.Close()
+	}()
+	batcher := NewBatcher(r, batchSize)
+
+	for {
+		finished, err := batcher.ReadBatch()
+		if finished {
+			break
+		}
+		if err != nil {
+			// Assume that the previous batches were ok
+			// Close the channel and don't read more bets
+			log.Errorf("action: error_detected | result: success | client_id: %v | error: %s", agencyID, err.Error())
+			break
+		}
+		req := protocol.NewBetRequest(agencyID, batcher)
+		requests <- req
+	}
 }

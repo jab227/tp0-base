@@ -82,22 +82,27 @@ func getRequestBytes(payload []byte, agencyID uint32, betCount uint32) []byte {
 
 func TestDecodeServerResponse(t *testing.T) {
 	const (
-		betNumber = 8
+		betNumberA = 8
+		betNumberB = 12
 	)
 	want := protocol.Ack{
-		BetNumber: betNumber,
+		Kind:       protocol.Acknowledge,
+		BetCount:   2,
+		BetNumbers: []uint32{betNumberA, betNumberB},
 	}
 
-	var data bytes.Buffer
-	buf := make([]byte, protocol.ResponseSize)
-	binary.LittleEndian.PutUint32(buf, betNumber)
-	data.Write(buf)
-
-	got, err := protocol.DecodeResponse(&data)
+	var buf bytes.Buffer
+	buf.WriteByte(protocol.Acknowledge)
+	bs := make([]byte, 0, 12)
+	bs = binary.LittleEndian.AppendUint32(bs, want.BetCount)
+	bs = binary.LittleEndian.AppendUint32(bs, want.BetNumbers[0])
+	bs = binary.LittleEndian.AppendUint32(bs, want.BetNumbers[1])
+	buf.Write(bs)
+	got, err := protocol.DecodeResponse(&buf)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
@@ -170,28 +175,34 @@ func TestShortWrite(t *testing.T) {
 
 func TestShortRead(t *testing.T) {
 	const (
-		betNumber = 8
+		betNumberA    = 8
+		betNumberB    = 12
+		expectedCalls = 13 // Sizeof Ack message in bytes
 	)
 	want := protocol.Ack{
-		BetNumber: betNumber,
+		Kind:       protocol.Acknowledge,
+		BetCount:   2,
+		BetNumbers: []uint32{betNumberA, betNumberB},
 	}
 
-	var data bytes.Buffer
-	r := ShortReader{&data, 0}
-	buf := make([]byte, 4)
+	var buf bytes.Buffer
+	buf.WriteByte(protocol.Acknowledge)
+	bs := make([]byte, 0, 12)
+	bs = binary.LittleEndian.AppendUint32(bs, want.BetCount)
+	bs = binary.LittleEndian.AppendUint32(bs, want.BetNumbers[0])
+	bs = binary.LittleEndian.AppendUint32(bs, want.BetNumbers[1])
+	buf.Write(bs)
 
-	binary.LittleEndian.PutUint32(buf, betNumber)
-	data.Write(buf)
-
-	got, err := protocol.DecodeResponse(&r)
+	r := &ShortReader{buf: &buf}
+	got, err := protocol.DecodeResponse(r)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 
-	if r.calls != protocol.ResponseSize {
-		t.Errorf("got %v, want %v", r.calls, protocol.ResponseSize)
+	if r.calls != expectedCalls {
+		t.Errorf("got %v, want %v", r.calls, expectedCalls)
 	}
 }

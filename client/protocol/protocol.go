@@ -3,14 +3,15 @@ package protocol
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
+	"unsafe"
 
 	"github.com/pkg/errors"
 )
 
 // Byte sizes
 const (
-	ResponseSize      = 4
 	RequestHeaderSize = 13
 )
 
@@ -21,8 +22,9 @@ type Marshaler interface {
 type MessageKind uint8
 
 const (
-	_                   = iota
-	PostBet MessageKind = 0
+	_                       = iota
+	PostBet     MessageKind = 0
+	Acknowledge             = 1
 )
 
 type RequestHeader struct {
@@ -38,7 +40,9 @@ type Request struct {
 }
 
 type Ack struct {
-	BetNumber uint32
+	Kind       MessageKind
+	BetCount   uint32
+	BetNumbers []uint32
 }
 
 func NewBetRequest(agencyId uint32, m Marshaler) Request {
@@ -81,21 +85,46 @@ func EncodeRequest(w io.Writer, req Request) error {
 }
 
 func DecodeResponse(r io.Reader) (Ack, error) {
-	// Make constant
-	buf := make([]byte, ResponseSize)
+	ackHeader := make([]byte, 5)
+	if err := readExact(r, ackHeader); err != nil {
+		return Ack{}, errors.Wrap(err, "couldn't decode response")
+	}
+
+	kind := ackHeader[0]
+	if kind != Acknowledge {
+		return Ack{}, errors.Errorf("unknown message type: %d", kind)
+	}
+
+	betCount := binary.LittleEndian.Uint32(ackHeader[1:5])
+	nBytes := int(betCount) * int(unsafe.Sizeof(betCount))
+	betNumbersBytes := make([]byte, nBytes)
+	if err := readExact(r, betNumbersBytes); err != nil {
+		return Ack{}, errors.Wrap(err, "couldn't decode response")
+	}
+
+	br := bytes.NewReader(betNumbersBytes)
+	fmt.Println(betNumbersBytes)
+	betNumbers := make([]uint32, betCount)
+	if err := binary.Read(br, binary.LittleEndian, betNumbers); err != nil {
+		return Ack{}, errors.Wrap(err, "couldn't decode response")
+	}
+
+	return Ack{
+		Kind:       MessageKind(kind),
+		BetCount:   betCount,
+		BetNumbers: betNumbers,
+	}, nil
+}
+
+func readExact(r io.Reader, p []byte) error {
 	read := 0
-	for read < ResponseSize {
-		n, err := r.Read(buf[read:])
+	size := len(p)
+	for read < size {
+		n, err := r.Read(p[read:])
 		if err != nil {
-			if errors.Is(err, io.EOF) && read < ResponseSize {
-				return Ack{}, errors.Errorf("Unexpected EOF")
-			}
-			return Ack{}, errors.Wrap(err, "can't decode response")
+			return err
 		}
 		read += n
 	}
-	betNumber := binary.LittleEndian.Uint32(buf[:])
-	return Ack{
-		BetNumber: betNumber,
-	}, nil
+	return nil
 }
