@@ -55,15 +55,25 @@ class Server:
         client socket will also be closed
         """
         try:
-            header = read_header(client_sock)
-            if header is None:
-                logging.error(f"action: receive_header | result: fail | error: invalid header")
-                return
-            logging.info(f"action: receive_header | result: success | agency: {header.agency_id}")
-            bet = read_payload(header, client_sock)
-            utils.store_bets([bet])
-            write_acknowledge(bet.number, client_sock)
-            logging.info(f"action: apuesta_almacenada | result: success | dni: {bet.document}| numero: {bet.number}")
+            agency_id = None
+            while True:
+                header = read_header(client_sock)
+                if header is None:
+                    logging.error(f"action: receive_header | result: fail | error: invalid header")
+                    return
+                
+                if header.kind == protocol.MessageKind.END_BETS:
+                    logging.info(f"action: receive_header | result: success | agency: {header.agency_id} | type: end bets")
+                    return
+
+                if agency_id:
+                    agency_id = header.agency_id
+                    
+                logging.info(f"action: receive_header | result: success | agency: {header.agency_id}")
+                bets = read_payload(header, client_sock)
+                utils.store_bets(bets)
+                write_acknowledge(bets, client_sock)
+                logging.info(f"action: apuestas_almacenadas | result: success | total: {len(bets)}")
         except OSError as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
         except RuntimeError as e:
@@ -113,13 +123,14 @@ def read_header(sock) -> Optional[protocol.Header]:
     return protocol.decode_header(header_bytes)
 
 
-def read_payload(header: protocol.Header, sock) -> utils.Bet:
+def read_payload(header: protocol.Header, sock) -> list[utils.Bet]:
     payload_bytes = recv_exact(sock, header.payload_size)
-    return protocol.parse_payload(str(header.agency_id), payload_bytes)
+    return protocol.parse_payload(header, payload_bytes)
 
-
-def write_acknowledge(bet_number: int, sock):
-    ack = protocol.Ack(bet_number)
+    
+def write_acknowledge(bets: list[utils.Bet], sock):
+    bet_numbers = [b.number for b in bets]
+    ack = protocol.Ack(len(bets),bet_numbers)
     data = protocol.encode_ack(ack)
     send_exact(sock, data)
     

@@ -31,6 +31,7 @@ type Client struct {
 func NewClient(bets io.ReadCloser, config ClientConfig) *Client {
 	client := &Client{
 		config: config,
+		bets:   bets,
 	}
 	return client
 }
@@ -64,19 +65,19 @@ func (c *Client) HandleSignals(ch <-chan os.Signal, done chan struct{}) {
 }
 
 type ServerResponse struct {
-	ack protocol.Ack
-	err error
+	ack  protocol.Response
+	stop bool
+	err  error
 }
 
 func SendBet(timeout time.Duration, conn net.Conn, result chan<- ServerResponse, requests <-chan protocol.Request) {
 	for req := range requests {
-		conn.SetReadDeadline(time.Now().Add(timeout))
+		conn.SetWriteDeadline(time.Now().Add(timeout))
 		if err := protocol.EncodeRequest(conn, req); err != nil {
 			result <- ServerResponse{err: err}
 			return
 		}
-
-		conn.SetWriteDeadline(time.Now().Add(timeout))
+		conn.SetReadDeadline(time.Now().Add(timeout))
 		ack, err := protocol.DecodeResponse(conn)
 		if err != nil {
 			result <- ServerResponse{err: err}
@@ -84,6 +85,18 @@ func SendBet(timeout time.Duration, conn net.Conn, result chan<- ServerResponse,
 		}
 		result <- ServerResponse{ack: ack}
 	}
+
+	// This may fail but all the bets where sent
+	conn.SetWriteDeadline(time.Now().Add(timeout))
+	req := protocol.Request{Header: protocol.RequestHeader{Kind: protocol.EndBets}}
+	if err := protocol.EncodeRequest(conn, req); err != nil {
+		result <- ServerResponse{err: err}
+		return
+	}
+	
+	result <- ServerResponse{stop: true}
+
+	return
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
@@ -104,7 +117,10 @@ func (c *Client) StartClientLoop() {
 				log.Errorf("action: error_detected | result: success | client_id: %v | error: %s",
 					c.config.ID, res.err.Error(),
 				)
-				break
+				return
+			}
+			if res.stop {
+				return
 			}
 			// CHECK(juan): Do I log all the bets?
 			log.Infof("action: apuestas_enviadas | result: success | cantidad: %d", res.ack.BetCount)

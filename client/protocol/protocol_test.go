@@ -37,7 +37,7 @@ func TestPostBetRequest(t *testing.T) {
 		bettor.BetNumber))
 
 	expectedHeader := protocol.RequestHeader{
-		Kind:        protocol.PostBet,
+		Kind:        protocol.SendBets,
 		AgencyID:    agencyID,
 		Count:       1,
 		PayloadSize: uint32(len(payload)),
@@ -68,7 +68,7 @@ func TestPostBetRequest(t *testing.T) {
 func getRequestBytes(payload []byte, agencyID uint32, betCount uint32) []byte {
 	var want bytes.Buffer
 
-	want.WriteByte(uint8(protocol.PostBet))
+	want.WriteByte(uint8(protocol.SendBets))
 
 	buf := make([]byte, 0, 12)
 	buf = binary.LittleEndian.AppendUint32(buf, uint32(len(payload)))
@@ -85,7 +85,7 @@ func TestDecodeServerResponse(t *testing.T) {
 		betNumberA = 8
 		betNumberB = 12
 	)
-	want := protocol.Ack{
+	want := protocol.Response{
 		Kind:       protocol.Acknowledge,
 		BetCount:   2,
 		BetNumbers: []uint32{betNumberA, betNumberB},
@@ -179,7 +179,7 @@ func TestShortRead(t *testing.T) {
 		betNumberB    = 12
 		expectedCalls = 13 // Sizeof Ack message in bytes
 	)
-	want := protocol.Ack{
+	want := protocol.Response{
 		Kind:       protocol.Acknowledge,
 		BetCount:   2,
 		BetNumbers: []uint32{betNumberA, betNumberB},

@@ -3,7 +3,6 @@ package protocol
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"unsafe"
 
@@ -23,8 +22,9 @@ type MessageKind uint8
 
 const (
 	_                       = iota
-	PostBet     MessageKind = 0
+	SendBets    MessageKind = 0
 	Acknowledge             = 1
+	EndBets                 = 2
 )
 
 type RequestHeader struct {
@@ -39,7 +39,7 @@ type Request struct {
 	Payload []byte
 }
 
-type Ack struct {
+type Response struct {
 	Kind       MessageKind
 	BetCount   uint32
 	BetNumbers []uint32
@@ -52,7 +52,7 @@ func NewBetRequest(agencyId uint32, m Marshaler) Request {
 		PayloadSize: uint32(payloadSize),
 		Count:       uint32(count),
 		AgencyID:    agencyId,
-		Kind:        PostBet,
+		Kind:        SendBets,
 	}
 	return Request{Header: header, Payload: payload}
 }
@@ -60,10 +60,12 @@ func NewBetRequest(agencyId uint32, m Marshaler) Request {
 func (r Request) bytes() []byte {
 	var data bytes.Buffer
 	data.WriteByte(uint8(r.Header.Kind))
-	buf := make([]byte, 0, 12)
-	buf = binary.LittleEndian.AppendUint32(buf, r.Header.PayloadSize)
-	buf = binary.LittleEndian.AppendUint32(buf, r.Header.Count)
-	buf = binary.LittleEndian.AppendUint32(buf, r.Header.AgencyID)
+	buf := make([]byte, 12, 12)
+	if r.Header.Kind == SendBets {
+		binary.LittleEndian.PutUint32(buf[:4], r.Header.PayloadSize)
+		binary.LittleEndian.PutUint32(buf[4:8], r.Header.Count)
+		binary.LittleEndian.PutUint32(buf[8:12], r.Header.AgencyID)
+	}
 	data.Write(buf)
 	data.Write(r.Payload)
 	return data.Bytes()
@@ -71,12 +73,19 @@ func (r Request) bytes() []byte {
 
 func EncodeRequest(w io.Writer, req Request) error {
 	reqBytes := req.bytes()
+	if err := writeExact(w, reqBytes); err != nil {
+		return errors.Wrap(err, "couldn't encode request")
+	}
+	return nil
+}
+
+func writeExact(w io.Writer, p []byte) error {
 	written := 0
-	for written < len(reqBytes) {
-		n, err := w.Write(reqBytes[written:])
+	for written < len(p) {
+		n, err := w.Write(p[written:])
 		if err != nil {
 			if !errors.Is(err, io.ErrShortWrite) {
-				return errors.Wrap(err, "can't encode request")
+				return err
 			}
 		}
 		written += n
@@ -84,33 +93,36 @@ func EncodeRequest(w io.Writer, req Request) error {
 	return nil
 }
 
-func DecodeResponse(r io.Reader) (Ack, error) {
-	ackHeader := make([]byte, 5)
-	if err := readExact(r, ackHeader); err != nil {
-		return Ack{}, errors.Wrap(err, "couldn't decode response")
+func DecodeResponse(r io.Reader) (Response, error) {
+	kindByte := make([]byte, 1)
+	if err := readExact(r, kindByte); err != nil {
+		return Response{}, errors.Wrap(err, "couldn't decode response: read ack header")
 	}
 
-	kind := ackHeader[0]
+	kind := MessageKind(kindByte[0])
 	if kind != Acknowledge {
-		return Ack{}, errors.Errorf("unknown message type: %d", kind)
+		return Response{}, errors.Errorf("unknown message type: %d", kind)
 	}
 
-	betCount := binary.LittleEndian.Uint32(ackHeader[1:5])
+	countBytes := make([]byte, 4)
+	if err := readExact(r, countBytes); err != nil {
+		return Response{}, errors.Wrap(err, "couldn't decode response: count bytes")
+	}
+	betCount := binary.LittleEndian.Uint32(countBytes[0:4])
 	nBytes := int(betCount) * int(unsafe.Sizeof(betCount))
 	betNumbersBytes := make([]byte, nBytes)
 	if err := readExact(r, betNumbersBytes); err != nil {
-		return Ack{}, errors.Wrap(err, "couldn't decode response")
+		return Response{}, errors.Wrap(err, "couldn't decode response: read bet numbers")
 	}
 
 	br := bytes.NewReader(betNumbersBytes)
-	fmt.Println(betNumbersBytes)
 	betNumbers := make([]uint32, betCount)
 	if err := binary.Read(br, binary.LittleEndian, betNumbers); err != nil {
-		return Ack{}, errors.Wrap(err, "couldn't decode response")
+		return Response{}, errors.Wrap(err, "couldn't decode response: parse bet numbers")
 	}
 
-	return Ack{
-		Kind:       MessageKind(kind),
+	return Response{
+		Kind:       kind,
 		BetCount:   betCount,
 		BetNumbers: betNumbers,
 	}, nil

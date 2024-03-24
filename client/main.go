@@ -15,7 +15,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
-	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/common"
 )
 
@@ -139,7 +138,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("couldn't open bets file: %s", err.Error())
 	}
-
 	rc := &BufferedReadCloser{
 		reader: bufio.NewReader(f),
 		closer: f,
