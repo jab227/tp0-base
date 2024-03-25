@@ -20,6 +20,7 @@ type Batcher struct {
 	scanner    *bufio.Scanner
 	notBatched int
 	batchSize  int
+	written    int
 }
 
 func NewBatcher(r io.Reader, batchSize int) *Batcher {
@@ -27,6 +28,10 @@ func NewBatcher(r io.Reader, batchSize int) *Batcher {
 		batchSize: batchSize,
 		scanner:   bufio.NewScanner(r),
 	}
+}
+
+func (b *Batcher) Written() int {
+	return b.written
 }
 
 func (b *Batcher) MarshalBet() ([]byte, int) {
@@ -48,6 +53,7 @@ func (b *Batcher) MarshalBet() ([]byte, int) {
 	}
 	b.bets = b.bets[i:]
 	b.notBatched -= i
+	b.written += i
 	payload := buf.Bytes()
 	return payload[:len(payload)-1], i
 }

@@ -86,6 +86,7 @@ type HandleContext struct {
 var ErrUnexpectedResponse = errors.New("unexpected response")
 
 func HandleBets(ctx *HandleContext, conn net.Conn) {
+	defer conn.Close()
 	for req := range ctx.Requests {
 		conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
 		if err := protocol.EncodeRequest(conn, req); err != nil {
@@ -106,7 +107,6 @@ func HandleBets(ctx *HandleContext, conn net.Conn) {
 		}
 	}
 
-	// This may fail but all the bets where sent
 	req := protocol.Done{ID: ctx.ID}
 	conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
 	if err := protocol.EncodeRequest(conn, req); err != nil {
@@ -114,7 +114,7 @@ func HandleBets(ctx *HandleContext, conn net.Conn) {
 		return
 	}
 
-	go GetWinners(ctx)
+	GetWinners(ctx)
 
 	return
 }
@@ -122,19 +122,19 @@ func HandleBets(ctx *HandleContext, conn net.Conn) {
 const BackoffExp = 2
 
 func GetWinners(ctx *HandleContext) {
-	conn, err := net.Dial("tcp", ctx.ServerAddress)
-	if err != nil {
-		ctx.Results <- ServerResponse{Err: err}
-		return
-	}
-	defer conn.Close()
 	retries := 0
 	backoff := ctx.Backoff
 
 	for retries < ctx.MaxRetries {
+		conn, err := net.Dial("tcp", ctx.ServerAddress)
+		if err != nil {
+			ctx.Results <- ServerResponse{Err: err}
+			return
+		}
 		req := protocol.Winners{ID: ctx.ID}
 		conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
 		if err := protocol.EncodeRequest(conn, req); err != nil {
+			conn.Close()
 			ctx.Results <- ServerResponse{Err: err}
 			return
 		}
@@ -142,27 +142,31 @@ func GetWinners(ctx *HandleContext) {
 		conn.SetReadDeadline(time.Now().Add(ctx.Timeout))
 		res, err := protocol.DecodeResponse(conn)
 		if err != nil {
+			conn.Close()
 			ctx.Results <- ServerResponse{Err: err}
 			return
 		}
 
 		switch r := res.(type) {
 		case protocol.WinnersUnavailable:
+			conn.Close()
 			time.Sleep(time.Duration(backoff))
 			retries++
 			backoff *= BackoffExp
 		case protocol.WinnersList:
+			conn.Close()
 			ctx.Results <- ServerResponse{Response: r}
 			ctx.Done <- struct{}{}
 			return
 		default:
 			retries++
+			conn.Close()
 			err := errors.Wrap(ErrUnexpectedResponse, "expected winners_list or winners_unavailable messages")
 			ctx.Results <- ServerResponse{Err: err}
 			return
 		}
 	}
-	err = errors.Errorf("couldn't get winners: max retry attemps reached %d", ctx.MaxRetries)
+	err := errors.Errorf("couldn't get winners: max retry attemps reached %d", ctx.MaxRetries)
 	ctx.Results <- ServerResponse{Err: err}
 }
 
@@ -170,7 +174,6 @@ func GetWinners(ctx *HandleContext) {
 func (c *Client) StartClientLoop() {
 	c.createClientSocket()
 	defer func() {
-		c.conn.Close()
 		c.bets.Close()
 	}()
 

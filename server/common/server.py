@@ -19,14 +19,14 @@ def sigterm_handler(signum, frame):
 class Server:
     agencies: dict[int, bool]
     winners: Optional[dict[int, int]]
-    def __init__(self, port, listen_backlog):
+    
+    def __init__(self, port, listen_backlog, number_of_agencies):
         # Initialize server socket
         signal.signal(signal.SIGTERM, sigterm_handler)
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
-        # TODO(juan) make it env
-        self.agencies = {i: False for i in range(1, 6)}
+        self.agencies = {i: False for i in range(1, int(number_of_agencies) + 1)}
         self.winners = None
         
     def run(self):
@@ -77,33 +77,33 @@ class Server:
                     utils.store_bets(req.bets)                    
                     response = protocol.Acknowledge(req.bets)
                     write_response(client_sock, response)
+                    continue
                 elif isinstance(req, protocol.Done):
                     self.agencies[req.agency_id] = True
-                    logging.info(f"action: receive_request | result: success | agency: {req.agency_id} | type: end bets")
+                    logging.info(f"action: receive_request | result: success | agency: {req.agency_id} | type: done")
+                    if all(self.agencies.values()) and self.winners is None:
+                        self.winners = {i: 0 for i in self.agencies.keys()}
+                        for bet in utils.load_bets():
+                            if utils.has_won(bet):
+                                self.winners[bet.agency] += 1
+                                logging.info("action: sorteo | result: success")
                     break
                 elif isinstance(req, protocol.Winners):
-                    if self.winners == None:
+                    if self.winners is None:
                         response = protocol.WinnersUnavailable()                    
                         write_response(client_sock, response)
                         logging.info(f"action: receive_request | result: fail | agency: {req.agency_id} | type: waiting for agencies to submit bets")
                         break
                     else:
                         winners = self.winners[req.agency_id]
+                        logging.debug(f"send_winners: {req.agency_id}, winners:{winners}")                        
                         response = protocol.WinnersList(winners)
                         write_response(client_sock, response)
                         return
                 else:
                     logging.info(f"action: receive_request | result: fail | error: unknown message")
-                    break
-                
-            if all(self.agencies) and self.winners is None:
-                bets = utils.load_bets()
-                self.winners = {i: 0 for i in range(1, 6)}
-                for bet in bets:
-                    if utils.has_won(bet):
-                        self.winners[bet.agency] += 1
-                logging.info("action: sorteo | result: success")
-                
+                    break                
+
         except OSError as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
         except RuntimeError as e:

@@ -52,8 +52,9 @@ Diego Agustin,Mamani,33259835,1991-01-08,1931`
 	})
 	t.Run("Smaller batch size if the total size is greater than 8KB", func(t *testing.T) {
 		s := "Santiago Lionel,Lorca,30904465,1999-03-17,2201\n"
-		nTimes := (common.MaxBatchByteSize / len(s)) + 1
+		nTimes := (common.MaxBatchByteSize / len(s)) + 2
 		s = strings.Repeat(s, nTimes)
+		s = s[:len(s) - 1]
 		r := strings.NewReader(s)
 		batcher := common.NewBatcher(r, nTimes)
 		finished, err := false, error(nil)
