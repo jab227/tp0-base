@@ -152,7 +152,7 @@ func main() {
 	client := common.NewClient(rc, clientConfig)
 
 	signalChannel := make(chan os.Signal, 1)
-	doneChannel := make(chan struct{}, 1)
+	doneChannel := make(chan struct{})
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
 	client.HandleSignals(signalChannel, doneChannel)
 

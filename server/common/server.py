@@ -1,9 +1,11 @@
+from dataclasses import dataclass
+from enum import Enum
+import multiprocessing
 import socket
 import logging
 import signal
 import common.protocol as protocol
-import common.utils as utils
-
+import common.storage as storage
 from typing import Optional
 
 
@@ -17,17 +19,15 @@ def sigterm_handler(signum, frame):
 
 
 class Server:
-    agencies: dict[int, bool]
-    winners: Optional[dict[int, int]]
-    
+    number_of_agencies: int
     def __init__(self, port, listen_backlog, number_of_agencies):
         # Initialize server socket
         signal.signal(signal.SIGTERM, sigterm_handler)
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
-        self.agencies = {i: False for i in range(1, int(number_of_agencies) + 1)}
-        self.winners = None
+        self.server_logger = logging.getLogger("Server")
+        self.number_of_agencies = number_of_agencies
         
     def run(self):
         """
@@ -38,78 +38,27 @@ class Server:
         finishes, servers starts to accept new connections again
         """
 
-        while True:
-            client_sock = None
-            try:
-                client_sock = self.__accept_new_connection()            
-                self.__handle_client_connection(client_sock)
-            except SignalSIGTERM as name:
-                logging.info(f'action: signal | result: success | msg: received {name.signal}')                                
+        storage.StorageManager().register('bets_store',storage.BetsStorage)            
+        task_id = 0
+        with storage.StorageManager() as manager:
+            with multiprocessing.Pool() as pool:
+                shared_store = manager.bets_store(self.number_of_agencies)                                    
+                while True:
+                    connections = []
+                    try:
+                        client_sock = self.__accept_new_connection()
+                        logger = logging.getLogger(f"client-{task_id}")
+                        connections.append(client_sock)
+                        _ = pool.apply_async(handle_client_connection, (client_sock, logger, shared_store,))
+                    except SignalSIGTERM as name:
+                        self.server_logger.info(f'action: signal | result: success | msg: received {name.signal}')
+                        self._server_socket.close()
+                        self.server_logger.info(f'action: close_socket | result: success | msg: "closed server socket"')
+                        for s in connections:
+                            s.close()
 
-                self._server_socket.close()
-                logging.info(f'action: close_socket | result: success | msg: "closed server socket"')
-
-                if client_sock:
-                    client_sock.close()
-                    logging.info(f'action:_close socket | result: success | msg: "closed client socket"')                    
-                return
-
-    def __handle_client_connection(self, client_sock):
-        """
-        Read message from a specific client socket and closes the socket
-
-        If a problem arises in the communication with the client, the
-        client socket will also be closed
-        """
-        try:
-            while True:
-                kind  =  read_kind(client_sock)
-                if kind is None:
-                    logging.error(f"action: receive_request | result: fail | error: unknown message kind")
-                    return
-                
-                req = read_request(client_sock, kind)
-                if req is None:
-                    logging.error(f"action: receive_request | result: fail | error: invalid req")
-                    return
-
-                if isinstance(req, protocol.Bet):
-                    utils.store_bets(req.bets)                    
-                    response = protocol.Acknowledge(req.bets)
-                    write_response(client_sock, response)
-                    continue
-                elif isinstance(req, protocol.Done):
-                    self.agencies[req.agency_id] = True
-                    logging.info(f"action: receive_request | result: success | agency: {req.agency_id} | type: done")
-                    if all(self.agencies.values()) and self.winners is None:
-                        self.winners = {i: 0 for i in self.agencies.keys()}
-                        for bet in utils.load_bets():
-                            if utils.has_won(bet):
-                                self.winners[bet.agency] += 1
-                                logging.info("action: sorteo | result: success")
-                    break
-                elif isinstance(req, protocol.Winners):
-                    if self.winners is None:
-                        response = protocol.WinnersUnavailable()                    
-                        write_response(client_sock, response)
-                        logging.info(f"action: receive_request | result: fail | agency: {req.agency_id} | type: waiting for agencies to submit bets")
-                        break
-                    else:
-                        winners = self.winners[req.agency_id]
-                        logging.debug(f"send_winners: {req.agency_id}, winners:{winners}")                        
-                        response = protocol.WinnersList(winners)
-                        write_response(client_sock, response)
+                        self.server_logger.info(f'action:_close socket | result: success | msg: "closed clients sockets"')
                         return
-                else:
-                    logging.info(f"action: receive_request | result: fail | error: unknown message")
-                    break                
-
-        except OSError as e:
-            logging.error(f"action: receive_message | result: fail | error: {e}")
-        except RuntimeError as e:
-            logging.error(f"action: receive_message | result: fail | error: {e}")
-        finally:
-            client_sock.close()
 
     def __accept_new_connection(self):
         """
@@ -173,3 +122,51 @@ def write_response(sock, response: protocol.Response):
     send_exact(sock, data)
     
     
+
+def handle_client_connection(client_sock, logger, store):
+    """
+        Read message from a specific client socket and closes the socket
+    
+        If a problem arises in the communication with the client, the
+        client socket will also be closed
+        """
+    try:
+        while True:
+            kind  =  read_kind(client_sock)
+            if kind is None:
+                logger.error(f"action: receive_request | result: fail | error: unknown message kind")
+                return
+            
+            req = read_request(client_sock, kind)
+            if req is None:
+                logger.error(f"action: receive_request | result: fail | error: invalid req")
+                return
+            
+            if isinstance(req, protocol.Bet):
+                id = req.agency_id
+                store.store_bets(id, req.bets)
+                response = protocol.Acknowledge(req.bets)
+                write_response(client_sock, response)
+                continue
+            elif isinstance(req, protocol.Done):
+                store.store_bets(req.agency_id, [], done=True)
+                logger.info(f"action: receive_request | result: success | agency: {req.agency_id} | type: done")
+            elif isinstance(req, protocol.Winners):
+                winner_count = store.get_winner_count(req.agency_id)
+                if winner_count is None:
+                    response = protocol.WinnersUnavailable()                    
+                    write_response(client_sock, response)
+                    logger.info(f"action: receive_request | result: fail | agency: {req.agency_id} | type: waiting for agencies to submit bets")
+                else:
+                    response = protocol.WinnersList(winner_count)
+                    write_response(client_sock, response)
+                    return
+            else:
+                logger.info(f"action: receive_request | result: fail | error: unknown message")
+                return
+    except OSError as e:
+        logger.error(f"action: receive_message | result: fail | error: {e}")
+    except RuntimeError as e:
+        logger.error(f"action: receive_message | result: fail | error: {e}")
+    finally:
+        client_sock.close()            

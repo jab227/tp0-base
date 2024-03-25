@@ -2,6 +2,7 @@ package common
 
 import (
 	"io"
+	"math/rand"
 	"net"
 	"os"
 	"time"
@@ -59,9 +60,6 @@ func (c *Client) HandleSignals(ch <-chan os.Signal, done chan struct{}) {
 	go func() {
 		signal := <-ch
 		log.Infof("action: signal | result: success | client_id: %v | msg: received %s", c.config.ID, signal)
-		c.conn.Close()
-		log.Infof("action: close_socket | result: success | client_id: %v | msg: closed client socket",
-			c.config.ID)
 		c.done <- struct{}{}
 	}()
 
@@ -86,7 +84,6 @@ type HandleContext struct {
 var ErrUnexpectedResponse = errors.New("unexpected response")
 
 func HandleBets(ctx *HandleContext, conn net.Conn) {
-	defer conn.Close()
 	for req := range ctx.Requests {
 		conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
 		if err := protocol.EncodeRequest(conn, req); err != nil {
@@ -113,28 +110,22 @@ func HandleBets(ctx *HandleContext, conn net.Conn) {
 		ctx.Results <- ServerResponse{Err: err}
 		return
 	}
-
-	GetWinners(ctx)
+	log.Debug("Done sent")
+	GetWinners(ctx, conn)
 
 	return
 }
 
 const BackoffExp = 2
 
-func GetWinners(ctx *HandleContext) {
+func GetWinners(ctx *HandleContext, conn net.Conn) {
 	retries := 0
 	backoff := ctx.Backoff
 
 	for retries < ctx.MaxRetries {
-		conn, err := net.Dial("tcp", ctx.ServerAddress)
-		if err != nil {
-			ctx.Results <- ServerResponse{Err: err}
-			return
-		}
 		req := protocol.Winners{ID: ctx.ID}
 		conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
 		if err := protocol.EncodeRequest(conn, req); err != nil {
-			conn.Close()
 			ctx.Results <- ServerResponse{Err: err}
 			return
 		}
@@ -142,25 +133,21 @@ func GetWinners(ctx *HandleContext) {
 		conn.SetReadDeadline(time.Now().Add(ctx.Timeout))
 		res, err := protocol.DecodeResponse(conn)
 		if err != nil {
-			conn.Close()
 			ctx.Results <- ServerResponse{Err: err}
 			return
 		}
 
 		switch r := res.(type) {
 		case protocol.WinnersUnavailable:
-			conn.Close()
-			time.Sleep(time.Duration(backoff))
+			time.Sleep(backoff)
 			retries++
 			backoff *= BackoffExp
+			backoff += time.Duration(rand.Int63n(100))
 		case protocol.WinnersList:
-			conn.Close()
 			ctx.Results <- ServerResponse{Response: r}
-			ctx.Done <- struct{}{}
 			return
 		default:
 			retries++
-			conn.Close()
 			err := errors.Wrap(ErrUnexpectedResponse, "expected winners_list or winners_unavailable messages")
 			ctx.Results <- ServerResponse{Err: err}
 			return
@@ -174,6 +161,7 @@ func GetWinners(ctx *HandleContext) {
 func (c *Client) StartClientLoop() {
 	c.createClientSocket()
 	defer func() {
+		c.conn.Close()
 		c.bets.Close()
 	}()
 
@@ -213,7 +201,7 @@ func (c *Client) StartClientLoop() {
 			}
 			switch r := res.Response.(type) {
 			case protocol.Acknowledge:
-				log.Infof("action: apuestas_enviadas | result: success | cantidad: %d", r.BetCount)
+				//				log.Infof("action: apuestas_enviadas | result: success | cantidad: %d", r.BetCount)
 			case protocol.WinnersUnavailable:
 				log.Info("action: consulta_ganadores | result: fail")
 			case protocol.WinnersList:

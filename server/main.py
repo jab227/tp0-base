@@ -5,7 +5,6 @@ from common.server import Server
 import logging
 import os
 
-
 DEFAULT_NUMBER_OF_AGENCIES = 5
 def initialize_config():
     """Parse env variables or config file to find program config params
@@ -42,16 +41,16 @@ def main():
     logging_level = config_params["logging_level"]
     port = config_params["port"]
     listen_backlog = config_params["listen_backlog"]
-
+    
     initialize_log(logging_level)
-
+    
     # Log config parameters at the beginning of the program to verify the configuration
     # of the component
     logging.debug(f"action: config | result: success | port: {port} | "
                   f"listen_backlog: {listen_backlog} | logging_level: {logging_level}")
 
     # Initialize server and start server loop
-    server = Server(port, listen_backlog, config_params["number_of_agencies"])
+    server = Server(port, listen_backlog, int(config_params["number_of_agencies"]))
     server.run()
 
 def initialize_log(logging_level):
