@@ -66,59 +66,6 @@ func TestEncodeRequest(t *testing.T) {
 		}
 	})
 
-	t.Run("make multiple bets", func(t *testing.T) {
-		bettor := agency.Bettor{
-			Name:      "Julio",
-			Surname:   "Cortazar",
-			DNI:       "52820003",
-			Birthdate: "1999-03-17",
-			BetNumber: "7574",
-		}
-
-		const (
-			agencyID = 42
-			betCount = 1
-		)
-
-		bet, _ := agency.NewBet(bettor)
-
-		expectedPayload := []byte(fmt.Sprintf("%s,%s,%s,%s,%s",
-			bettor.Name,
-			bettor.Surname,
-			bettor.DNI,
-			bettor.Birthdate,
-			bettor.BetNumber))
-
-		payload, count := bet.MarshalBet()
-
-		if !reflect.DeepEqual(payload, expectedPayload) {
-			t.Errorf("got %v, want %v", payload, expectedPayload)
-		}
-
-		if count != betCount {
-			t.Errorf("got %v, want %v", count, betCount)
-		}
-
-		req := protocol.Bet{
-			PayloadSize: uint32(len(payload)),
-			Count:       uint32(count),
-			AgencyID:    agencyID,
-			Payload:     payload,
-		}
-
-		var got bytes.Buffer
-		err := protocol.EncodeRequest(&got, req)
-		if err != nil {
-			t.Errorf("Unexpected error: %s", err.Error())
-		}
-
-		want := getRequestBytes(expectedPayload, agencyID, betCount)
-
-		if !reflect.DeepEqual(got.Bytes(), want) {
-			t.Errorf("got %v, want %v", got.Bytes(), want)
-		}
-	})
-
 	t.Run("make done request", func(t *testing.T) {
 		req := protocol.Done{}
 		var got bytes.Buffer
@@ -133,6 +80,18 @@ func TestEncodeRequest(t *testing.T) {
 
 	})
 
+	t.Run("request winners", func(t *testing.T) {
+		req := protocol.Winners{}
+		var got bytes.Buffer
+		err := protocol.EncodeRequest(&got, req)
+		if err != nil {
+			t.Errorf("Unexpected error: %s", err.Error())
+		}
+		want := []byte{protocol.MessageWinners}
+		if !reflect.DeepEqual(got.Bytes(), want) {
+			t.Errorf("got %v, want %v", got.Bytes(), want)
+		}
+	})
 }
 
 func getRequestBytes(payload []byte, agencyID uint32, betCount uint32) []byte {
@@ -150,31 +109,84 @@ func getRequestBytes(payload []byte, agencyID uint32, betCount uint32) []byte {
 	return want.Bytes()
 }
 
-func TestDecodeServerResponse(t *testing.T) {
-	const (
-		betNumberA = 8
-		betNumberB = 12
-	)
-	want := protocol.Response{
-		Kind:       protocol.MessageAcknowledge,
-		BetCount:   2,
-		BetNumbers: []uint32{betNumberA, betNumberB},
-	}
+func TestDecodeResponse(t *testing.T) {
+	t.Run("decode acknowledge", func(t *testing.T) {
+		const (
+			betNumberA = 8
+			betNumberB = 12
+		)
+		want := protocol.Acknowledge{
+			BetCount:   2,
+			BetNumbers: []uint32{betNumberA, betNumberB},
+		}
 
-	var buf bytes.Buffer
-	buf.WriteByte(protocol.MessageAcknowledge)
-	bs := make([]byte, 0, 12)
-	bs = binary.LittleEndian.AppendUint32(bs, want.BetCount)
-	bs = binary.LittleEndian.AppendUint32(bs, want.BetNumbers[0])
-	bs = binary.LittleEndian.AppendUint32(bs, want.BetNumbers[1])
-	buf.Write(bs)
-	got, err := protocol.DecodeResponse(&buf)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err.Error())
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %v, want %v", got, want)
-	}
+		var buf bytes.Buffer
+		buf.WriteByte(protocol.MessageAcknowledge)
+		bs := make([]byte, 12, 12)
+		binary.LittleEndian.PutUint32(bs[:4], want.BetCount)
+		binary.LittleEndian.PutUint32(bs[4:8], want.BetNumbers[0])
+		binary.LittleEndian.PutUint32(bs[8:12], want.BetNumbers[1])
+		buf.Write(bs)
+
+		res, err := protocol.DecodeResponse(&buf)
+		if err != nil {
+			t.Errorf("Unexpected error: %s", err.Error())
+		}
+
+		got, ok := res.(protocol.Acknowledge)
+		if !ok {
+			t.Errorf("Expected Acknowledge")
+		}
+
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("decode winners_unavailable", func(t *testing.T) {
+		const (
+			betNumberA = 8
+			betNumberB = 12
+		)
+
+		var buf bytes.Buffer
+		buf.WriteByte(protocol.MessageWinnersUnavailable)
+
+		res, err := protocol.DecodeResponse(&buf)
+		if err != nil {
+			t.Errorf("Unexpected error: %s", err.Error())
+		}
+
+		_, ok := res.(protocol.WinnersUnavailable)
+		if !ok {
+			t.Errorf("Expected winners_unavailable")
+		}
+	})
+
+	t.Run("decode winners_list", func(t *testing.T) {
+		const WinnerCount = 42
+
+		want := protocol.WinnersList{WinnerCount: WinnerCount}
+
+		var buf bytes.Buffer
+		buf.WriteByte(protocol.MessageWinnersList)
+		bs := make([]byte, 4, 4)		
+		binary.LittleEndian.PutUint32(bs, WinnerCount)
+		buf.Write(bs)
+		
+		res, err := protocol.DecodeResponse(&buf)
+		if err != nil {
+			t.Errorf("Unexpected error: %s", err.Error())
+		}
+
+		got, ok := res.(protocol.WinnersList)
+		if !ok {
+			t.Errorf("Expected winners_list")
+		}
+		if got != want {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
 }
 
 type ShortWriter struct {
@@ -249,25 +261,30 @@ func TestShortRead(t *testing.T) {
 		betNumberB    = 12
 		expectedCalls = 13 // Sizeof Ack message in bytes
 	)
-	want := protocol.Response{
-		Kind:       protocol.MessageAcknowledge,
+	want := protocol.Acknowledge{
 		BetCount:   2,
 		BetNumbers: []uint32{betNumberA, betNumberB},
 	}
 
 	var buf bytes.Buffer
 	buf.WriteByte(protocol.MessageAcknowledge)
-	bs := make([]byte, 0, 12)
-	bs = binary.LittleEndian.AppendUint32(bs, want.BetCount)
-	bs = binary.LittleEndian.AppendUint32(bs, want.BetNumbers[0])
-	bs = binary.LittleEndian.AppendUint32(bs, want.BetNumbers[1])
+	bs := make([]byte, 12, 12)
+	binary.LittleEndian.PutUint32(bs[:4], want.BetCount)
+	binary.LittleEndian.PutUint32(bs[4:8], want.BetNumbers[0])
+	binary.LittleEndian.PutUint32(bs[8:12], want.BetNumbers[1])
 	buf.Write(bs)
 
 	r := &ShortReader{buf: &buf}
-	got, err := protocol.DecodeResponse(r)
+	res, err := protocol.DecodeResponse(r)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
 	}
+
+	got, ok := res.(protocol.Acknowledge)
+	if !ok {
+		t.Errorf("Expected Acknowledge")
+	}
+
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}

@@ -23,7 +23,9 @@ services:
       - CLI_LOG_LEVEL=DEBUG
       - CLI_BATCH_SIZE=16
       - CLI_BETS_PATH=/dataset/agency-1.csv
-      - CLI_SOCKET_TIMEOUT=15s      
+      - CLI_SOCKET_TIMEOUT=15s
+      - CLI_MAX_RETRIES=3
+      - CLI_BACKOFF=25ms
     networks:
       - testing_net
     depends_on:
@@ -42,6 +44,8 @@ services:
       - CLI_BATCH_SIZE=16
       - CLI_BETS_PATH=/dataset/agency-2.csv
       - CLI_SOCKET_TIMEOUT=15s
+      - CLI_MAX_RETRIES=3
+      - CLI_BACKOFF=25ms      
     networks:
       - testing_net
     depends_on:
@@ -59,7 +63,9 @@ services:
       - CLI_LOG_LEVEL=DEBUG
       - CLI_BATCH_SIZE=16
       - CLI_BETS_PATH=/dataset/agency-3.csv
-      - CLI_SOCKET_TIMEOUT=15s      
+      - CLI_SOCKET_TIMEOUT=15s
+      - CLI_MAX_RETRIES=3
+      - CLI_BACKOFF=25ms      
     networks:
       - testing_net
     depends_on:
@@ -77,7 +83,9 @@ services:
       - CLI_LOG_LEVEL=DEBUG
       - CLI_BATCH_SIZE=16
       - CLI_BETS_PATH=/dataset/agency-4.csv
-      - CLI_SOCKET_TIMEOUT=15s      
+      - CLI_SOCKET_TIMEOUT=15s
+      - CLI_MAX_RETRIES=3
+      - CLI_BACKOFF=25ms
     networks:
       - testing_net
     depends_on:
@@ -95,7 +103,9 @@ services:
       - CLI_LOG_LEVEL=DEBUG
       - CLI_BATCH_SIZE=16
       - CLI_BETS_PATH=/dataset/agency-5.csv
-      - CLI_SOCKET_TIMEOUT=15s      
+      - CLI_SOCKET_TIMEOUT=15s
+      - CLI_MAX_RETRIES=3
+      - CLI_BACKOFF=25ms      
     networks:
       - testing_net
     depends_on:

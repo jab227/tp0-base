@@ -21,10 +21,13 @@ type Marshaler interface {
 type MessageKind uint8
 
 const (
-	_                              = iota
-	MessageBet         MessageKind = 0
-	MessageAcknowledge             = 1
-	MessageDone                    = 2
+	_                                     = iota
+	MessageBet                MessageKind = 0
+	MessageAcknowledge                    = 1
+	MessageDone                           = 2
+	MessageWinners                        = 3
+	MessageWinnersUnavailable             = 4
+	MessageWinnersList                    = 5
 )
 
 type Request interface {
@@ -56,17 +59,40 @@ func (b Bet) Marshal() []byte {
 
 type Done struct{}
 
+type Winners struct{}
+
+func (w Winners) Marshal() []byte {
+	buf := make([]byte, 1, 1)
+	buf[0] = MessageWinners
+	return buf
+}
+
 func (d Done) Marshal() []byte {
 	buf := make([]byte, 1, 1)
 	buf[0] = MessageDone
 	return buf
 }
 
-type Response struct {
-	Kind       MessageKind
+type Response interface {
+	isResponse()
+}
+
+type Acknowledge struct {
 	BetCount   uint32
 	BetNumbers []uint32
 }
+
+func (a Acknowledge) isResponse() {}
+
+type WinnersUnavailable struct{}
+
+func (w WinnersUnavailable) isResponse() {}
+
+type WinnersList struct {
+	WinnerCount uint32
+}
+
+func (w WinnersList) isResponse() {}
 
 func EncodeRequest(w io.Writer, req Request) error {
 	reqBytes := req.Marshal()
@@ -93,37 +119,46 @@ func writeExact(w io.Writer, p []byte) error {
 func DecodeResponse(r io.Reader) (Response, error) {
 	kindByte := make([]byte, 1)
 	if err := readExact(r, kindByte); err != nil {
-		return Response{}, errors.Wrap(err, "couldn't read kind byte")
+		return Acknowledge{}, errors.Wrap(err, "couldn't read kind byte")
 	}
 
 	kind := MessageKind(kindByte[0])
-	if kind != MessageAcknowledge {
+	switch kind {
+	case MessageAcknowledge:
+		countBytes := make([]byte, 4)
+		if err := readExact(r, countBytes); err != nil {
+			return Acknowledge{}, errors.Wrap(err, "couldn't read count")
+		}
+		betCount := binary.LittleEndian.Uint32(countBytes[0:4])
+		nBytes := int(betCount) * int(unsafe.Sizeof(betCount))
+		betNumbersBytes := make([]byte, nBytes)
+		if err := readExact(r, betNumbersBytes); err != nil {
+			return Acknowledge{}, errors.Wrap(err, "couldn't read bet numbers")
+		}
+
+		br := bytes.NewReader(betNumbersBytes)
+		betNumbers := make([]uint32, betCount)
+		if err := binary.Read(br, binary.LittleEndian, betNumbers); err != nil {
+			return Acknowledge{}, errors.Wrap(err, "couldn't parse bet numbers")
+		}
+
+		return Acknowledge{
+			BetCount:   betCount,
+			BetNumbers: betNumbers,
+		}, nil
+	case MessageWinnersUnavailable:
+		return WinnersUnavailable{}, nil
+	case MessageWinnersList:
+		buf := make([]byte, 4)
+		if err := readExact(r, buf); err != nil {
+			return Acknowledge{}, errors.Wrap(err, "couldn't read winners")
+		}
+		winners := binary.LittleEndian.Uint32(buf[:4])
+		return WinnersList{winners}, nil
+	default:
 		err := errors.Errorf("unknown message type: %d", kind)
-		return Response{}, err
+		return nil, err
 	}
-
-	countBytes := make([]byte, 4)
-	if err := readExact(r, countBytes); err != nil {
-		return Response{}, errors.Wrap(err, "couldn't read count")
-	}
-	betCount := binary.LittleEndian.Uint32(countBytes[0:4])
-	nBytes := int(betCount) * int(unsafe.Sizeof(betCount))
-	betNumbersBytes := make([]byte, nBytes)
-	if err := readExact(r, betNumbersBytes); err != nil {
-		return Response{}, errors.Wrap(err, "couldn't read bet numbers")
-	}
-
-	br := bytes.NewReader(betNumbersBytes)
-	betNumbers := make([]uint32, betCount)
-	if err := binary.Read(br, binary.LittleEndian, betNumbers); err != nil {
-		return Response{}, errors.Wrap(err, "couldn't parse bet numbers")
-	}
-
-	return Response{
-		Kind:       kind,
-		BetCount:   betCount,
-		BetNumbers: betNumbers,
-	}, nil
 }
 
 func readExact(r io.Reader, p []byte) error {

@@ -7,14 +7,17 @@ import (
 	"time"
 
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/protocol"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
 // ClientConfig Configuration used by the client
 type ClientConfig struct {
-	Timeout     time.Duration
+	Timeout       time.Duration
+	Backoff       time.Duration
 	ServerAddress string
 	BatchSize     int
+	MaxRetries    int
 	ID            uint32
 }
 
@@ -70,33 +73,43 @@ type ServerResponse struct {
 }
 
 type HandleContext struct {
-	Conn     net.Conn
-	Results  chan<- ServerResponse
-	Done     chan<- struct{}
-	Requests <-chan protocol.Request
-	Timeout  time.Duration
+	Results       chan<- ServerResponse
+	Done          chan<- struct{}
+	Requests      <-chan protocol.Request
+	Timeout       time.Duration
+	Backoff       time.Duration
+	MaxRetries    int
+	ServerAddress string
+	ID            uint32
 }
 
-func HandleBets(ctx *HandleContext) {
+var ErrUnexpectedResponse = errors.New("unexpected response")
+
+func HandleBets(ctx *HandleContext, conn net.Conn) {
 	for req := range ctx.Requests {
-		ctx.Conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
-		if err := protocol.EncodeRequest(ctx.Conn, req); err != nil {
+		conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
+		if err := protocol.EncodeRequest(conn, req); err != nil {
 			ctx.Results <- ServerResponse{Err: err}
 			return
 		}
-		ctx.Conn.SetReadDeadline(time.Now().Add(ctx.Timeout))
-		ack, err := protocol.DecodeResponse(ctx.Conn)
+		conn.SetReadDeadline(time.Now().Add(ctx.Timeout))
+		res, err := protocol.DecodeResponse(conn)
 		if err != nil {
 			ctx.Results <- ServerResponse{Err: err}
 			return
 		}
-		ctx.Results <- ServerResponse{Response: ack}
+		ack, ok := res.(protocol.Acknowledge)
+		if !ok {
+			ctx.Results <- ServerResponse{Err: errors.Wrap(ErrUnexpectedResponse, "expected acknowledge")}
+		} else {
+			ctx.Results <- ServerResponse{Response: ack}
+		}
 	}
 
 	// This may fail but all the bets where sent
-	ctx.Conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
+	conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
 	req := protocol.Done{}
-	if err := protocol.EncodeRequest(ctx.Conn, req); err != nil {
+	if err := protocol.EncodeRequest(conn, req); err != nil {
 		ctx.Results <- ServerResponse{Err: err}
 		return
 	}
@@ -104,6 +117,56 @@ func HandleBets(ctx *HandleContext) {
 	ctx.Done <- struct{}{}
 
 	return
+}
+
+const BackoffExp = 2
+
+func GetWinners(ctx *HandleContext) {
+	conn, err := net.Dial("tcp", ctx.ServerAddress)
+	if err != nil {
+		ctx.Results <- ServerResponse{Err: err}
+		return
+	}
+	defer conn.Close()
+	req := protocol.Winners{}
+	conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
+	if err := protocol.EncodeRequest(conn, req); err != nil {
+		ctx.Results <- ServerResponse{Err: err}
+		return
+	}
+	retries := 0
+	backoff := ctx.Backoff
+
+	for retries < ctx.MaxRetries {
+		conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
+		if err := protocol.EncodeRequest(conn, req); err != nil {
+			ctx.Results <- ServerResponse{Err: err}
+			return
+		}
+
+		conn.SetReadDeadline(time.Now().Add(ctx.Timeout))
+		res, err := protocol.DecodeResponse(conn)
+		if err != nil {
+			ctx.Results <- ServerResponse{Err: err}
+			return
+		}
+
+		switch r := res.(type) {
+		case protocol.WinnersUnavailable:
+			time.Sleep(time.Duration(backoff))
+			retries++
+			backoff *= BackoffExp
+		case protocol.WinnersList:
+			ctx.Results <- ServerResponse{Response: r}
+			return
+		default:
+			retries++
+			err := errors.Wrap(ErrUnexpectedResponse, "expected winners_list or winners_unavailable messages")
+			ctx.Results <- ServerResponse{Err: err}
+		}
+	}
+	err = errors.Errorf("couldn't get winners: max retry attemps reached %d", ctx.MaxRetries)
+	ctx.Results <- ServerResponse{Err: err}
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
@@ -126,27 +189,34 @@ func (c *Client) StartClientLoop() {
 	go HandleBatchs(batchCtx)
 
 	handleCtx := &HandleContext{
-		Conn:     c.conn,
-		Results:  resultChannel,
-		Done:     c.done,
-		Requests: requestChannel,
-		Timeout:  c.config.Timeout,
+		Results:       resultChannel,
+		Done:          c.done,
+		Requests:      requestChannel,
+		Timeout:       c.config.Timeout,
+		ServerAddress: c.config.ServerAddress,
+		ID:            c.config.ID,
 	}
 
-	go HandleBets(handleCtx)
+	go HandleBets(handleCtx, c.conn)
 
 	for {
 		select {
 		case res := <-resultChannel:
 			if res.Err != nil {
 				log.Errorf("action: error_detected | result: success | client_id: %v | error: %s",
-					c.config.ID, res.Err.Error(),
-				)
-				return
+					c.config.ID, res.Err.Error())
+				if !errors.Is(res.Err, ErrUnexpectedResponse) {
+					return
+				}
 			}
-
-			// CHECK(juan): Do I log all the bets?
-			log.Infof("action: apuestas_enviadas | result: success | cantidad: %d", res.Response.BetCount)
+			switch r := res.Response.(type) {
+			case protocol.Acknowledge:
+				log.Infof("action: apuestas_enviadas | result: success | cantidad: %d", r.BetCount)
+			case protocol.WinnersUnavailable:
+				log.Info("action: consulta_ganadores | result: fail")
+			case protocol.WinnersList:
+				log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", r.WinnerCount)
+			}
 		case <-c.done:
 			return
 		}

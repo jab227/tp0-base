@@ -48,6 +48,10 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("bets", "path")
 	// The size of the batches/chunks
 	v.BindEnv("batch", "size")
+	// The number of retries to get the winners
+	v.BindEnv("max", "retries")
+	// the backoff time when the results aren't available
+	v.BindEnv("backoff")
 
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but
@@ -128,10 +132,12 @@ func main() {
 	PrintConfig(v)
 
 	clientConfig := common.ClientConfig{
-		ServerAddress: v.GetString("server.address"),
-		ID:            v.GetUint32("id"),
-		BatchSize:     v.GetInt("batch.size"),
 		Timeout:       v.GetDuration("socket.timeout"),
+		Backoff:       v.GetDuration("backoff"),
+		ServerAddress: v.GetString("server.address"),
+		BatchSize:     v.GetInt("batch.size"),
+		MaxRetries:    v.GetInt("max.retries"),
+		ID:            v.GetUint32("id"),
 	}
 
 	path := v.GetString("bets.path")
