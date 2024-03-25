@@ -6,6 +6,7 @@ import common.utils as utils
 
 from typing import Optional
 
+
 class SignalSIGTERM(Exception):
     def __init__(self, signum):
         self.signal = signal.Signals(signum).name
@@ -13,14 +14,20 @@ class SignalSIGTERM(Exception):
 def sigterm_handler(signum, frame):
     _ = frame
     raise SignalSIGTERM(signum)
-    
+
+
 class Server:
+    agencies: dict[int, bool]
+    winners: Optional[dict[int, int]]
     def __init__(self, port, listen_backlog):
         # Initialize server socket
         signal.signal(signal.SIGTERM, sigterm_handler)
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
+        # TODO(juan) make it env
+        self.agencies = {i: False for i in range(1, 6)}
+        self.winners = None
         
     def run(self):
         """
@@ -55,30 +62,47 @@ class Server:
         client socket will also be closed
         """
         try:
-            agency_id = None
             while True:
                 kind  =  read_kind(client_sock)
                 if kind is None:
-                    logging.error(f"action: receive_header | result: fail | error: unknown message kind")
+                    logging.error(f"action: receive_request | result: fail | error: unknown message kind")
                     return
                 
-                if kind == protocol.MessageKind.DONE:
-                    logging.info(f"action: receive_header | result: success | agency: {agency_id} | type: end bets")
-                    return
-                
-                header = read_header(client_sock)
-                if header is None:
-                    logging.error(f"action: receive_header | result: fail | error: invalid header")
+                req = read_request(client_sock, kind)
+                if req is None:
+                    logging.error(f"action: receive_request | result: fail | error: invalid req")
                     return
 
-                if agency_id is None:
-                    agency_id = header.agency_id
-                    
-                logging.info(f"action: receive_header | result: success | agency: {header.agency_id}")
-                bets = read_payload(header, client_sock)
-                utils.store_bets(bets)
-                write_acknowledge(bets, client_sock)
-                logging.info(f"action: apuestas_almacenadas | result: success | total: {len(bets)}")
+                if isinstance(req, protocol.Bet):
+                    utils.store_bets(req.bets)                    
+                    response = protocol.Acknowledge(req.bets)
+                    write_response(client_sock, response)
+                elif isinstance(req, protocol.Done):
+                    self.agencies[req.agency_id] = True
+                    logging.info(f"action: receive_request | result: success | agency: {req.agency_id} | type: end bets")
+                    break
+                elif isinstance(req, protocol.Winners):
+                    if self.winners == None:
+                        response = protocol.WinnersUnavailable()                    
+                        write_response(client_sock, response)
+                        logging.info(f"action: receive_request | result: fail | agency: {req.agency_id} | type: waiting for agencies to submit bets")
+                        break
+                    else:
+                        winners = self.winners[req.agency_id]
+                        response = protocol.WinnersList(winners)
+                        write_response(client_sock, response)
+                        return
+                else:
+                    logging.info(f"action: receive_request | result: fail | error: unknown message")
+                    break
+                
+            if all(self.agencies) and self.winners is None:
+                bets = utils.load_bets()
+                self.winners = {i: 0 for i in range(1, 6)}
+                for bet in bets:
+                    if utils.has_won(bet):
+                        self.winners[bet.agency] += 1
+                logging.info("action: sorteo | result: success")
                 
         except OSError as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
@@ -128,20 +152,24 @@ def read_kind(sock) -> Optional[protocol.MessageKind]:
     b = recv_exact(sock, 1)
     return protocol.decode_kind(b)
 
-def read_header(sock) -> Optional[protocol.Header]:
-    header_bytes = recv_exact(sock, protocol.Header.HEADER_SIZE)
-    return protocol.decode_bet_message(header_bytes)
 
-
-def read_payload(header: protocol.Header, sock) -> list[utils.Bet]:
-    payload_bytes = recv_exact(sock, header.payload_size)
-    return protocol.parse_payload(header, payload_bytes)
+def read_request(sock, kind: protocol.MessageKind) -> Optional[protocol.Request]:
+    bs = b''
+    if kind == protocol.MessageKind.BET:
+        bs = recv_exact(sock, protocol.Bet.SIZE)
+        bet = protocol.decode(kind, bs)
+        if bet is None or not isinstance(bet, protocol.Bet):
+            return None
+        payload_bytes = recv_exact(sock, bet.payload_size)
+        payload = protocol.parse_payload(bet, payload_bytes)
+        bet.bets = payload
+        return bet
+    bs = recv_exact(sock, 4)    
+    return protocol.decode(kind, bs)
 
     
-def write_acknowledge(bets: list[utils.Bet], sock):
-    bet_numbers = [b.number for b in bets]
-    ack = protocol.Acknowledge(len(bets),bet_numbers)
-    data = protocol.encode_ack(ack)
+def write_response(sock, response: protocol.Response):
+    data = response.encode()
     send_exact(sock, data)
     
     

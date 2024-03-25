@@ -3,3 +3,7 @@
 
 # Executables
 bin/
+*.csv
+__pycache__/
+.data/
+dataset/

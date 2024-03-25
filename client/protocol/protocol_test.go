@@ -67,13 +67,13 @@ func TestEncodeRequest(t *testing.T) {
 	})
 
 	t.Run("make done request", func(t *testing.T) {
-		req := protocol.Done{}
+		req := protocol.Done{2}
 		var got bytes.Buffer
 		err := protocol.EncodeRequest(&got, req)
 		if err != nil {
 			t.Errorf("Unexpected error: %s", err.Error())
 		}
-		want := []byte{protocol.MessageDone}
+		want := []byte{protocol.MessageDone, 2, 0, 0, 0}
 		if !reflect.DeepEqual(got.Bytes(), want) {
 			t.Errorf("got %v, want %v", got.Bytes(), want)
 		}
@@ -81,13 +81,13 @@ func TestEncodeRequest(t *testing.T) {
 	})
 
 	t.Run("request winners", func(t *testing.T) {
-		req := protocol.Winners{}
+		req := protocol.Winners{2}
 		var got bytes.Buffer
 		err := protocol.EncodeRequest(&got, req)
 		if err != nil {
 			t.Errorf("Unexpected error: %s", err.Error())
 		}
-		want := []byte{protocol.MessageWinners}
+		want := []byte{protocol.MessageWinners, 2, 0, 0, 0}
 		if !reflect.DeepEqual(got.Bytes(), want) {
 			t.Errorf("got %v, want %v", got.Bytes(), want)
 		}
@@ -170,10 +170,10 @@ func TestDecodeResponse(t *testing.T) {
 
 		var buf bytes.Buffer
 		buf.WriteByte(protocol.MessageWinnersList)
-		bs := make([]byte, 4, 4)		
+		bs := make([]byte, 4, 4)
 		binary.LittleEndian.PutUint32(bs, WinnerCount)
 		buf.Write(bs)
-		
+
 		res, err := protocol.DecodeResponse(&buf)
 		if err != nil {
 			t.Errorf("Unexpected error: %s", err.Error())

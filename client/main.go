@@ -2,8 +2,8 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"io"
+	"fmt"
 	"os"
 	"os/signal"
 	"strings"

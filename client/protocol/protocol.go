@@ -57,19 +57,25 @@ func (b Bet) Marshal() []byte {
 	return data.Bytes()
 }
 
-type Done struct{}
+type Done struct {
+	ID uint32
+}
 
-type Winners struct{}
+type Winners struct {
+	ID uint32
+}
 
 func (w Winners) Marshal() []byte {
-	buf := make([]byte, 1, 1)
+	buf := make([]byte, 5, 5)
 	buf[0] = MessageWinners
+	binary.LittleEndian.PutUint32(buf[1:5], w.ID)
 	return buf
 }
 
 func (d Done) Marshal() []byte {
-	buf := make([]byte, 1, 1)
+	buf := make([]byte, 5, 5)
 	buf[0] = MessageDone
+	binary.LittleEndian.PutUint32(buf[1:5], d.ID)
 	return buf
 }
 
