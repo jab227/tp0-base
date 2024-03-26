@@ -152,13 +152,13 @@ def handle_client_connection(client_sock, logger, store):
                 store.store_bets(req.agency_id, [], done=True)
                 logger.info(f"action: receive_request | result: success | agency: {req.agency_id} | type: done")
             elif isinstance(req, request.Winners):
-                winner_count = store.get_winner_count(req.agency_id)
-                if winner_count is None:
+                winners_dnis = store.get_winners(req.agency_id)
+                if winners_dnis is None:
                     res = response.WinnersUnavailable()                    
                     write_response(client_sock, res)
                     logger.info(f"action: receive_request | result: fail | agency: {req.agency_id} | type: waiting for agencies to submit bets")
                 else:
-                    res = response.WinnersList(winner_count)
+                    res = response.WinnersList(winners_dnis)
                     write_response(client_sock, res)
                     return
             else:

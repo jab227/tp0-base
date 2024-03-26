@@ -102,6 +102,9 @@ func (c *Client) StartClientLoop() {
 				log.Info("action: consulta_ganadores | result: fail")
 			case protocol.WinnersList:
 				log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", r.WinnerCount)
+				if r.WinnerCount != 0 {
+					log.Infof("action: consulta_ganadores | result: success | docs_ganadores: %v", r.DNIS)
+				}
 				return
 			}
 		case <-c.done:
