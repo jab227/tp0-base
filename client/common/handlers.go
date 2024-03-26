@@ -44,7 +44,7 @@ func HandleSignals(client *Client, ch <-chan os.Signal, done chan struct{}) {
 	go func(id int) {
 		signal := <-ch
 		log.Infof("action: signal | result: success | client_id: %v | msg: received %s", id, signal)
-		done <- struct{}{}
+		close(done)
 	}(int(client.config.ID))
 
 }
@@ -109,12 +109,11 @@ func GetWinners(ctx *ProtocolHandlerContext, conn net.Conn) {
 			time.Sleep(backoff)
 			retries++
 			backoff *= BackoffExp
-			backoff += time.Duration(rand.Int63n(100))
+			backoff += time.Duration(rand.Int63n(100)) * time.Millisecond
 		case protocol.WinnersList:
 			ctx.Results <- HandlerResponse{Response: r}
 			return
 		default:
-			retries++
 			err := errors.Wrap(ErrUnexpectedResponse, "expected winners_list or winners_unavailable messages")
 			ctx.Results <- HandlerResponse{Err: err}
 			return
