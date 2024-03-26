@@ -48,7 +48,7 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("bets", "path")
 	// The size of the batches/chunks
 	v.BindEnv("batch", "size")
-
+	v.SetDefault("batch.size", 16)
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but
 	// configuration can be loaded from the environment variables

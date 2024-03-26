@@ -12,7 +12,7 @@ import (
 
 // ClientConfig Configuration used by the client
 type ClientConfig struct {
-	Timeout     time.Duration
+	Timeout       time.Duration
 	ServerAddress string
 	BatchSize     int
 	ID            uint32
@@ -111,7 +111,11 @@ func (c *Client) StartClientLoop() {
 	c.createClientSocket()
 	defer func() {
 		c.conn.Close()
+		log.Infof("action: close_socket | result: success | client_id: %v | msg: closed client socket",
+			c.config.ID)
+
 		c.bets.Close()
+		log.Infof("action: close_file | result: success | client_id: %v | msg: closed dataset file", c.config.ID)
 	}()
 
 	resultChannel := make(chan ServerResponse)
