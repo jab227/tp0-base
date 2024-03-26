@@ -24,11 +24,11 @@ el cliente como el _ID_.
 
 Para el script se decidió utilizar _go_, a continuación se presenta un ejemplo de uso:
 ```bash
-	$ cd dockergen/
-	$ export DOCKERGEN_NUMBER_OF_CLIENTS=3
-	$ export DOCKERGEN_FILENAME=docker-compose.yaml
-	$ export DOCKERGEN_COMPOSE_NAME=dockergen-example
-	$ go run .
+$ cd dockergen/
+$ export DOCKERGEN_NUMBER_OF_CLIENTS=3
+$ export DOCKERGEN_FILENAME=docker-compose.yaml
+$ export DOCKERGEN_COMPOSE_NAME=dockergen-example
+$ go run .
 ```
 
 La ejecución resulta en el siguiente archivo
@@ -104,7 +104,7 @@ servidor la siguiente llave:
 
 ```yaml
 volumes:
-	- ./{client/server}:/{echoclient/echoserver}
+  - ./{client/server}:/{echoclient/echoserver}
 ```
 
 Para ver que los cambios persisten basta con levantar el compose,
