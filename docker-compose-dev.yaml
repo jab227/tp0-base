@@ -25,7 +25,8 @@ services:
       - CLI_BETTOR_APELLIDO=Borges
       - CLI_BETTOR_DOCUMENTO=52820000
       - CLI_BETTOR_NACIMIENTO=1899-08-24
-      - CLI_BETTOR_NUMERO=7542      
+      - CLI_BETTOR_NUMERO=7542
+      - CLI_SOCKET_TIMEOUT=15s
     networks:
       - testing_net
     depends_on:
@@ -45,6 +46,7 @@ services:
       - CLI_BETTOR_DOCUMENTO=52820001
       - CLI_BETTOR_NACIMIENTO=1914-08-26
       - CLI_BETTOR_NUMERO=7574
+      - CLI_SOCKET_TIMEOUT=15s
     networks:
       - testing_net
     depends_on:
@@ -64,6 +66,7 @@ services:
       - CLI_BETTOR_DOCUMENTO=52820002
       - CLI_BETTOR_NACIMIENTO=1914-09-15
       - CLI_BETTOR_NUMERO=1812
+      - CLI_SOCKET_TIMEOUT=15s
     networks:
       - testing_net
     depends_on:
@@ -83,6 +86,7 @@ services:
       - CLI_BETTOR_DOCUMENTO=52820003
       - CLI_BETTOR_NACIMIENTO=1917-05-16
       - CLI_BETTOR_NUMERO=2315
+      - CLI_SOCKET_TIMEOUT=15s
     networks:
       - testing_net
     depends_on:
@@ -102,6 +106,7 @@ services:
       - CLI_BETTOR_DOCUMENTO=52820004
       - CLI_BETTOR_NACIMIENTO=1922-11-16
       - CLI_BETTOR_NUMERO=1346
+      - CLI_SOCKET_TIMEOUT=15s
     networks:
       - testing_net
     depends_on:

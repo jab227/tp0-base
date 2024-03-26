@@ -38,8 +38,7 @@ func InitConfig() (*viper.Viper, error) {
 	// Add env variables supported
 	v.BindEnv("id")
 	v.BindEnv("server", "address")
-	v.BindEnv("loop", "period")
-	v.BindEnv("loop", "lapse")
+	v.BindEnv("socket", "timeout")
 	v.BindEnv("log", "level")
 
 	// Bet env variables
@@ -138,8 +137,7 @@ func main() {
 	clientConfig := common.ClientConfig{
 		ServerAddress: v.GetString("server.address"),
 		ID:            v.GetUint32("id"),
-		LoopLapse:     v.GetDuration("loop.lapse"),
-		LoopPeriod:    v.GetDuration("loop.period"),
+		Timeout:       v.GetDuration("socket.timeout"),
 	}
 	PrintBettor(v)
 	bettor := NewBetFromEnv(v)

@@ -14,8 +14,7 @@ import (
 // ClientConfig Configuration used by the client
 type ClientConfig struct {
 	ServerAddress string
-	LoopLapse     time.Duration
-	LoopPeriod    time.Duration
+	Timeout     time.Duration
 	ID            uint32
 }
 
@@ -109,7 +108,7 @@ func (c *Client) StartClientLoop() {
 		return
 	case <-c.done:
 		return
-	case <-time.After(c.config.LoopLapse):
+	case <-time.After(c.config.Timeout):
 		log.Infof("action: timeout_detected | result: success | client_id: %v",
 			c.config.ID,
 		)

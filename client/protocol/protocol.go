@@ -22,7 +22,7 @@ type MessageKind uint8
 
 const (
 	_                   = iota
-	PostBet MessageKind = 0
+	Bet MessageKind = 0
 )
 
 type RequestHeader struct {
@@ -46,7 +46,7 @@ func NewBetRequest(agencyId uint32, m Marshaler) Request {
 	header := RequestHeader{
 		PayloadSize: uint32(payloadSize),
 		AgencyID:    agencyId,
-		Kind:        PostBet,
+		Kind:        Bet,
 	}
 	return Request{Header: header, Payload: payload}
 }

@@ -34,7 +34,7 @@ func TestPostBetRequest(t *testing.T) {
 		bettor.BetNumber))
 
 	expectedHeader := protocol.RequestHeader{
-		Kind:        protocol.PostBet,
+		Kind:        protocol.Bet,
 		AgencyID:    agencyID,
 		PayloadSize: uint32(len(payload)),
 	}
@@ -55,7 +55,7 @@ func TestPostBetRequest(t *testing.T) {
 
 	var want bytes.Buffer
 
-	want.WriteByte(uint8(protocol.PostBet))
+	want.WriteByte(uint8(protocol.Bet))
 
 	buf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(buf, uint32(len(payload)))
@@ -145,7 +145,7 @@ func TestShortWrite(t *testing.T) {
 		bettor.DNI,
 		bettor.Birthdate,
 		bettor.BetNumber))
-	want.WriteByte(uint8(protocol.PostBet))
+	want.WriteByte(uint8(protocol.Bet))
 
 	buf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(buf, uint32(len(payload)))
