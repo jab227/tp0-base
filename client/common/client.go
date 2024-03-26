@@ -84,7 +84,11 @@ type HandleContext struct {
 var ErrUnexpectedResponse = errors.New("unexpected response")
 
 func HandleBets(ctx *HandleContext, conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		conn.Close()
+		log.Infof("action: close_socket | result: success | client_id: %v | msg: closed client socket",
+			ctx.ID)
+	}()
 	for req := range ctx.Requests {
 		conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
 		if err := protocol.EncodeRequest(conn, req); err != nil {
@@ -120,7 +124,11 @@ func HandleBets(ctx *HandleContext, conn net.Conn) {
 const BackoffExp = 2
 
 func tryGetWinners(conn net.Conn, ID uint32, timeout time.Duration) (protocol.Response, error) {
-	defer conn.Close()
+	defer func() {
+		conn.Close()
+		log.Infof("action: close_socket | result: success | client_id: %v | msg: closed client socket",
+			ID)
+	}()
 	req := protocol.Winners{ID: ID}
 	conn.SetWriteDeadline(time.Now().Add(timeout))
 	if err := protocol.EncodeRequest(conn, req); err != nil {
@@ -148,6 +156,9 @@ func GetWinners(ctx *HandleContext) {
 		select {
 		case <-ctx.Done:
 			conn.Close()
+			log.Infof("action: close_socket | result: success | client_id: %v | msg: closed client socket",
+				ctx.ID)
+
 			return
 		default:
 			res, err := tryGetWinners(conn, ctx.ID, ctx.Timeout)
@@ -179,6 +190,7 @@ func GetWinners(ctx *HandleContext) {
 func (c *Client) StartClientLoop() {
 	c.createClientSocket()
 	defer func() {
+		log.Infof("action: close_file | result: success | client_id: %v | msg: closed dataset file", c.config.ID)
 		c.bets.Close()
 	}()
 

@@ -43,7 +43,7 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("loop", "lapse")
 	v.BindEnv("socket", "timeout")
 	v.BindEnv("log", "level")
-
+	
 	// The path to the file from which the bets will be read
 	v.BindEnv("bets", "path")
 	// The size of the batches/chunks
@@ -53,6 +53,7 @@ func InitConfig() (*viper.Viper, error) {
 	// the backoff time when the results aren't available
 	v.BindEnv("backoff")
 
+	v.SetDefault("batch.size", 16)
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but
 	// configuration can be loaded from the environment variables
@@ -150,7 +151,7 @@ func main() {
 		closer: f,
 	}
 	client := common.NewClient(rc, clientConfig)
-
+	fmt.Println("Batch size: ", clientConfig.BatchSize)
 	signalChannel := make(chan os.Signal, 1)
 	doneChannel := make(chan struct{}, 1)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)

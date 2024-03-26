@@ -86,7 +86,7 @@ class Server:
                         for bet in utils.load_bets():
                             if utils.has_won(bet):
                                 self.winners[bet.agency].append(bet.document)
-                            logging.info("action: sorteo | result: success")
+                        logging.info("action: sorteo | result: success")
                     break
                 elif isinstance(req, protocol.Winners):
                     if self.winners is None:
