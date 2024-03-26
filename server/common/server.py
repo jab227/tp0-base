@@ -18,7 +18,7 @@ def sigterm_handler(signum, frame):
 
 class Server:
     agencies: dict[int, bool]
-    winners: Optional[dict[int, int]]
+    winners: Optional[dict[int, list[str]]]
     
     def __init__(self, port, listen_backlog, number_of_agencies):
         # Initialize server socket
@@ -82,11 +82,11 @@ class Server:
                     self.agencies[req.agency_id] = True
                     logging.info(f"action: receive_request | result: success | agency: {req.agency_id} | type: done")
                     if all(self.agencies.values()) and self.winners is None:
-                        self.winners = {i: 0 for i in self.agencies.keys()}
+                        self.winners = {i: [] for i in self.agencies.keys()}
                         for bet in utils.load_bets():
                             if utils.has_won(bet):
-                                self.winners[bet.agency] += 1
-                                logging.info("action: sorteo | result: success")
+                                self.winners[bet.agency].append(bet.document)
+                            logging.info("action: sorteo | result: success")
                     break
                 elif isinstance(req, protocol.Winners):
                     if self.winners is None:
@@ -96,7 +96,6 @@ class Server:
                         break
                     else:
                         winners = self.winners[req.agency_id]
-                        logging.debug(f"send_winners: {req.agency_id}, winners:{winners}")                        
                         response = protocol.WinnersList(winners)
                         write_response(client_sock, response)
                         return

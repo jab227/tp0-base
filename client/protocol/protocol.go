@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"strings"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -96,6 +97,7 @@ func (w WinnersUnavailable) isResponse() {}
 
 type WinnersList struct {
 	WinnerCount uint32
+	DNIS        []string
 }
 
 func (w WinnersList) isResponse() {}
@@ -133,19 +135,19 @@ func DecodeResponse(r io.Reader) (Response, error) {
 	case MessageAcknowledge:
 		countBytes := make([]byte, 4)
 		if err := readExact(r, countBytes); err != nil {
-			return Acknowledge{}, errors.Wrap(err, "couldn't read count")
+			return nil, errors.Wrap(err, "couldn't read count")
 		}
 		betCount := binary.LittleEndian.Uint32(countBytes[0:4])
 		nBytes := int(betCount) * int(unsafe.Sizeof(betCount))
 		betNumbersBytes := make([]byte, nBytes)
 		if err := readExact(r, betNumbersBytes); err != nil {
-			return Acknowledge{}, errors.Wrap(err, "couldn't read bet numbers")
+			return nil, errors.Wrap(err, "couldn't read bet numbers")
 		}
 
 		br := bytes.NewReader(betNumbersBytes)
 		betNumbers := make([]uint32, betCount)
 		if err := binary.Read(br, binary.LittleEndian, betNumbers); err != nil {
-			return Acknowledge{}, errors.Wrap(err, "couldn't parse bet numbers")
+			return nil, errors.Wrap(err, "couldn't parse bet numbers")
 		}
 
 		return Acknowledge{
@@ -155,12 +157,18 @@ func DecodeResponse(r io.Reader) (Response, error) {
 	case MessageWinnersUnavailable:
 		return WinnersUnavailable{}, nil
 	case MessageWinnersList:
-		buf := make([]byte, 4)
+		buf := make([]byte, 8)
 		if err := readExact(r, buf); err != nil {
-			return Acknowledge{}, errors.Wrap(err, "couldn't read winners")
+			return nil, errors.Wrap(err, "couldn't read winners")
 		}
 		winners := binary.LittleEndian.Uint32(buf[:4])
-		return WinnersList{winners}, nil
+		payload_size := binary.LittleEndian.Uint32(buf[4:])
+		payload := make([]byte, payload_size)
+		if err := readExact(r, payload); err != nil {
+			return nil, errors.Wrap(err, "couldn't read winners")
+		}
+		dnis := strings.Split(string(payload), ",")
+		return WinnersList{winners, dnis}, nil
 	default:
 		err := errors.Errorf("unknown message type: %d", kind)
 		return nil, err

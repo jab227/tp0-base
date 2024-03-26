@@ -2,6 +2,7 @@ package common
 
 import (
 	"io"
+	"math/rand"
 	"net"
 	"os"
 	"time"
@@ -59,10 +60,7 @@ func (c *Client) HandleSignals(ch <-chan os.Signal, done chan struct{}) {
 	go func() {
 		signal := <-ch
 		log.Infof("action: signal | result: success | client_id: %v | msg: received %s", c.config.ID, signal)
-		c.conn.Close()
-		log.Infof("action: close_socket | result: success | client_id: %v | msg: closed client socket",
-			c.config.ID)
-		c.done <- struct{}{}
+		close(c.done)
 	}()
 
 }
@@ -74,7 +72,7 @@ type ServerResponse struct {
 
 type HandleContext struct {
 	Results       chan<- ServerResponse
-	Done          chan<- struct{}
+	Done          <-chan struct{}
 	Requests      <-chan protocol.Request
 	Timeout       time.Duration
 	Backoff       time.Duration
@@ -121,6 +119,22 @@ func HandleBets(ctx *HandleContext, conn net.Conn) {
 
 const BackoffExp = 2
 
+func tryGetWinners(conn net.Conn, ID uint32, timeout time.Duration) (protocol.Response, error) {
+	defer conn.Close()
+	req := protocol.Winners{ID: ID}
+	conn.SetWriteDeadline(time.Now().Add(timeout))
+	if err := protocol.EncodeRequest(conn, req); err != nil {
+		return nil, err
+	}
+
+	conn.SetReadDeadline(time.Now().Add(timeout))
+	res, err := protocol.DecodeResponse(conn)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
 func GetWinners(ctx *HandleContext) {
 	retries := 0
 	backoff := ctx.Backoff
@@ -131,39 +145,30 @@ func GetWinners(ctx *HandleContext) {
 			ctx.Results <- ServerResponse{Err: err}
 			return
 		}
-		req := protocol.Winners{ID: ctx.ID}
-		conn.SetWriteDeadline(time.Now().Add(ctx.Timeout))
-		if err := protocol.EncodeRequest(conn, req); err != nil {
+		select {
+		case <-ctx.Done:
 			conn.Close()
-			ctx.Results <- ServerResponse{Err: err}
-			return
-		}
-
-		conn.SetReadDeadline(time.Now().Add(ctx.Timeout))
-		res, err := protocol.DecodeResponse(conn)
-		if err != nil {
-			conn.Close()
-			ctx.Results <- ServerResponse{Err: err}
-			return
-		}
-
-		switch r := res.(type) {
-		case protocol.WinnersUnavailable:
-			conn.Close()
-			time.Sleep(time.Duration(backoff))
-			retries++
-			backoff *= BackoffExp
-		case protocol.WinnersList:
-			conn.Close()
-			ctx.Results <- ServerResponse{Response: r}
-			ctx.Done <- struct{}{}
 			return
 		default:
-			retries++
-			conn.Close()
-			err := errors.Wrap(ErrUnexpectedResponse, "expected winners_list or winners_unavailable messages")
-			ctx.Results <- ServerResponse{Err: err}
-			return
+			res, err := tryGetWinners(conn, ctx.ID, ctx.Timeout)
+			if err != nil {
+				ctx.Results <- ServerResponse{Err: err}
+				return
+			}
+			switch r := res.(type) {
+			case protocol.WinnersUnavailable:
+				time.Sleep(backoff)
+				retries++
+				backoff *= BackoffExp
+				backoff += time.Duration(rand.Int63n(100)) * time.Millisecond
+			case protocol.WinnersList:
+				ctx.Results <- ServerResponse{Response: r}
+				return
+			default:
+				err := errors.Wrap(ErrUnexpectedResponse, "expected winners_list or winners_unavailable messages")
+				ctx.Results <- ServerResponse{Err: err}
+				return
+			}
 		}
 	}
 	err := errors.Errorf("couldn't get winners: max retry attemps reached %d", ctx.MaxRetries)
@@ -218,6 +223,10 @@ func (c *Client) StartClientLoop() {
 				log.Info("action: consulta_ganadores | result: fail")
 			case protocol.WinnersList:
 				log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", r.WinnerCount)
+				if r.WinnerCount != 0 {
+					log.Infof("action: consulta_ganadores | result: success | docs_ganadores: %v", r.DNIS)
+				}
+				return
 			}
 		case <-c.done:
 			return

@@ -78,16 +78,23 @@ class Acknowledge:
     
 class WinnersList:
     winners_count: int
-
-    def __init__(self, winners_count: int) -> None:
-        self.winners_count = winners_count
+    dnis: list[str]
+    
+    def __init__(self, dnis: list[str]) -> None:
+        self.winners_count = len(dnis)
+        self.dnis = dnis
         
     def encode(self) -> bytes:
         kind = int.to_bytes(MessageKind.WINNERSLIST.value, 1, byteorder='little')
         winners_count = int.to_bytes(self.winners_count,
                                      SIZEOF_UINT32,
                                      byteorder='little')
-        return kind + winners_count
+        payload = b''
+        for dni in self.dnis:
+            payload += dni.encode()
+            payload += b','
+        payload_size = int.to_bytes(len(payload), SIZEOF_UINT32, byteorder='little')
+        return kind + winners_count + payload_size + payload
 
     
 class WinnersUnavailable:

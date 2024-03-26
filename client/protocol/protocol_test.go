@@ -164,15 +164,22 @@ func TestDecodeResponse(t *testing.T) {
 	})
 
 	t.Run("decode winners_list", func(t *testing.T) {
-		const WinnerCount = 42
+		const WinnerCount = 2
 
-		want := protocol.WinnersList{WinnerCount: WinnerCount}
+		want := protocol.WinnersList{
+			WinnerCount: WinnerCount,
+			DNIS:        []string{"1856", "1812"},
+		}
 
 		var buf bytes.Buffer
 		buf.WriteByte(protocol.MessageWinnersList)
 		bs := make([]byte, 4, 4)
 		binary.LittleEndian.PutUint32(bs, WinnerCount)
 		buf.Write(bs)
+		payload := []byte("1856,1812")
+		binary.LittleEndian.PutUint32(bs, uint32(len(payload)))
+		buf.Write(bs)
+		buf.Write(payload)
 
 		res, err := protocol.DecodeResponse(&buf)
 		if err != nil {
@@ -183,7 +190,7 @@ func TestDecodeResponse(t *testing.T) {
 		if !ok {
 			t.Errorf("Expected winners_list")
 		}
-		if got != want {
+		if !reflect.DeepEqual(got, want) {
 			t.Errorf("got %v, want %v", got, want)
 		}
 	})
