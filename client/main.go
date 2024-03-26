@@ -151,7 +151,6 @@ func main() {
 		closer: f,
 	}
 	client := common.NewClient(rc, clientConfig)
-	fmt.Println("Batch size: ", clientConfig.BatchSize)
 	signalChannel := make(chan os.Signal, 1)
 	doneChannel := make(chan struct{}, 1)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
