@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/common"
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/protocol"
 )
 
 func TestMarshalBatch(t *testing.T) {
@@ -23,7 +23,7 @@ Diego Agustin,Mamani,33259835,1991-01-08,1931`
 		r := strings.NewReader(bets)
 
 		payloads := strings.Split(bets, "\n")
-		batcher := common.NewBatcher(r, batchSize)
+		batcher := protocol.NewBatcher(r, batchSize)
 		finished, err := false, error(nil)
 		i := 0
 		for {
@@ -52,11 +52,11 @@ Diego Agustin,Mamani,33259835,1991-01-08,1931`
 	})
 	t.Run("Smaller batch size if the total size is greater than 8KB", func(t *testing.T) {
 		s := "Santiago Lionel,Lorca,30904465,1999-03-17,2201\n"
-		nTimes := (common.MaxBatchByteSize / len(s)) + 2
+		nTimes := (protocol.MaxBatchByteSize / len(s)) + 2
 		s = strings.Repeat(s, nTimes)
 		s = s[:len(s) - 1]
 		r := strings.NewReader(s)
-		batcher := common.NewBatcher(r, nTimes)
+		batcher := protocol.NewBatcher(r, nTimes)
 		finished, err := false, error(nil)
 		for {
 			finished, err = batcher.ReadBatch()
@@ -71,8 +71,8 @@ Diego Agustin,Mamani,33259835,1991-01-08,1931`
 			if batched >= nTimes {
 				t.Errorf("got %d, want %d", batched, nTimes)
 			}
-			if len(payload) > common.MaxBatchByteSize {
-				t.Errorf("Got payload size %d, want %d", len(payload), common.MaxBatchByteSize)
+			if len(payload) > protocol.MaxBatchByteSize {
+				t.Errorf("Got payload size %d, want %d", len(payload), protocol.MaxBatchByteSize)
 			}
 		}
 	})
