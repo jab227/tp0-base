@@ -4,12 +4,10 @@ services:
   server:
     container_name: server
     image: server:latest
-    entrypoint: python3 ./main.py
+    entrypoint: python3 /main.py
     environment:
       - PYTHONUNBUFFERED=1
       - LOGGING_LEVEL=DEBUG
-    volumes:
-      - ./server:/echoserver      
     networks:
       - testing_net
 
@@ -24,38 +22,7 @@ services:
       - testing_net
     depends_on:
       - server
-    volumes:
-      - ./client:/echoclient
-      
-  client2:
-    container_name: client2
-    image: client:latest
-    entrypoint: /client
-    environment:
-      - CLI_ID=2
-      - CLI_LOG_LEVEL=DEBUG
-    networks:
-      - testing_net
-    depends_on:
-      - server
-    volumes:
-      - ./client:/echoclient
 
-  nctest:
-    container_name: nctest
-    build:
-      context: .
-      dockerfile: scripts/Dockerfile
-    environment:
-      - SERVER_PORT=12345
-    networks:
-      - testing_net
-    volumes:
-      - ./scripts:/scripts
-    depends_on:
-      - server
-    command: ./nc_test.sh
-      
 networks:
   testing_net:
     ipam:
