@@ -1,4 +1,4 @@
-package common_test
+package protocol_test
 
 import (
 	"fmt"

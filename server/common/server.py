@@ -1,12 +1,12 @@
-from dataclasses import dataclass
-from enum import Enum
 import multiprocessing
 import socket
 import logging
 import signal
-import common.protocol as protocol
-import common.storage as storage
+
 from typing import Optional
+from common import storage
+from protocol import response, request, message
+
 
 
 class SignalSIGTERM(Exception):
@@ -97,28 +97,28 @@ def recv_exact(sock, read_size: int) -> bytes:
     return b''.join(buf)
 
 
-def read_kind(sock) -> Optional[protocol.MessageKind]:
+def read_kind(sock) -> Optional[message.Kind]:
     b = recv_exact(sock, 1)
-    return protocol.decode_kind(b)
+    return message.decode(b)
 
 
-def read_request(sock, kind: protocol.MessageKind) -> Optional[protocol.Request]:
+def read_request(sock, kind: message.Kind) -> Optional[request.Request]:
     bs = b''
-    if kind == protocol.MessageKind.BET:
-        bs = recv_exact(sock, protocol.Bet.SIZE)
-        bet = protocol.decode(kind, bs)
-        if bet is None or not isinstance(bet, protocol.Bet):
+    if kind == message.Kind.BET:
+        bs = recv_exact(sock, request.Bet.SIZE)
+        bet = request.decode(kind, bs)
+        if bet is None or not isinstance(bet, request.Bet):
             return None
         payload_bytes = recv_exact(sock, bet.payload_size)
-        payload = protocol.parse_payload(bet, payload_bytes)
+        payload = request.parse_payload(bet, payload_bytes)
         bet.bets = payload
         return bet
     bs = recv_exact(sock, 4)    
-    return protocol.decode(kind, bs)
+    return request.decode(kind, bs)
 
     
-def write_response(sock, response: protocol.Response):
-    data = response.encode()
+def write_response(sock, res: response.Response):
+    data = res.encode()
     send_exact(sock, data)
     
     
@@ -142,24 +142,24 @@ def handle_client_connection(client_sock, logger, store):
                 logger.error(f"action: receive_request | result: fail | error: invalid req")
                 return
             
-            if isinstance(req, protocol.Bet):
+            if isinstance(req, request.Bet):
                 id = req.agency_id
                 store.store_bets(id, req.bets)
-                response = protocol.Acknowledge(req.bets)
-                write_response(client_sock, response)
+                res = response.Acknowledge(req.bets)
+                write_response(client_sock, res)
                 continue
-            elif isinstance(req, protocol.Done):
+            elif isinstance(req, request.Done):
                 store.store_bets(req.agency_id, [], done=True)
                 logger.info(f"action: receive_request | result: success | agency: {req.agency_id} | type: done")
-            elif isinstance(req, protocol.Winners):
+            elif isinstance(req, request.Winners):
                 winner_count = store.get_winner_count(req.agency_id)
                 if winner_count is None:
-                    response = protocol.WinnersUnavailable()                    
-                    write_response(client_sock, response)
+                    res = response.WinnersUnavailable()                    
+                    write_response(client_sock, res)
                     logger.info(f"action: receive_request | result: fail | agency: {req.agency_id} | type: waiting for agencies to submit bets")
                 else:
-                    response = protocol.WinnersList(winner_count)
-                    write_response(client_sock, response)
+                    res = response.WinnersList(winner_count)
+                    write_response(client_sock, res)
                     return
             else:
                 logger.info(f"action: receive_request | result: fail | error: unknown message")

@@ -108,20 +108,6 @@ func EncodeRequest(w io.Writer, req Request) error {
 	return nil
 }
 
-func writeExact(w io.Writer, p []byte) error {
-	written := 0
-	for written < len(p) {
-		n, err := w.Write(p[written:])
-		if err != nil {
-			if !errors.Is(err, io.ErrShortWrite) {
-				return err
-			}
-		}
-		written += n
-	}
-	return nil
-}
-
 func DecodeResponse(r io.Reader) (Response, error) {
 	kindByte := make([]byte, 1)
 	if err := readExact(r, kindByte); err != nil {
@@ -165,17 +151,4 @@ func DecodeResponse(r io.Reader) (Response, error) {
 		err := errors.Errorf("unknown message type: %d", kind)
 		return nil, err
 	}
-}
-
-func readExact(r io.Reader, p []byte) error {
-	read := 0
-	size := len(p)
-	for read < size {
-		n, err := r.Read(p[read:])
-		if err != nil {
-			return err
-		}
-		read += n
-	}
-	return nil
 }

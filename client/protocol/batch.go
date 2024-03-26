@@ -1,4 +1,4 @@
-package common
+package protocol
 
 import (
 	"bufio"
@@ -7,15 +7,13 @@ import (
 	"strings"
 
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
-	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/protocol"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 )
 
 const KB = (1 << 10)
 const MaxBatchByteSize = 8 * KB
 
-type Batcher struct {
+type BetBatcher struct {
 	bets       []agency.Bet
 	scanner    *bufio.Scanner
 	notBatched int
@@ -23,19 +21,19 @@ type Batcher struct {
 	written    int
 }
 
-func NewBatcher(r io.Reader, batchSize int) *Batcher {
-	return &Batcher{
+func NewBatcher(r io.Reader, batchSize int) *BetBatcher {
+	return &BetBatcher{
 		batchSize: batchSize,
 		scanner:   bufio.NewScanner(r),
 	}
 }
 
-func (b *Batcher) Written() int {
+func (b *BetBatcher) Written() int {
 	return b.written
 }
 
-func (b *Batcher) MarshalBet() ([]byte, int) {
-	requestSize := protocol.RequestHeaderSize
+func (b *BetBatcher) MarshalBet() ([]byte, int) {
+	requestSize := RequestHeaderSize
 	var buf bytes.Buffer
 	i := 0
 	for _, bet := range b.bets {
@@ -58,7 +56,7 @@ func (b *Batcher) MarshalBet() ([]byte, int) {
 	return payload[:len(payload)-1], i
 }
 
-func (b *Batcher) ReadBatch() (bool, error) {
+func (b *BetBatcher) ReadBatch() (bool, error) {
 	lineNumber := 1
 	read := 0
 	for read < b.batchSize {
@@ -87,37 +85,4 @@ func (b *Batcher) ReadBatch() (bool, error) {
 	}
 	b.notBatched += read
 	return b.notBatched == 0, nil
-}
-
-type BatchContext struct {
-	ID        uint32
-	Reader    io.Reader
-	BatchSize int
-	Requests  chan<- protocol.Request
-}
-
-func HandleBatchs(ctx *BatchContext) {
-	defer close(ctx.Requests)
-	batcher := NewBatcher(ctx.Reader, ctx.BatchSize)
-
-	for {
-		finished, err := batcher.ReadBatch()
-		if finished {
-			break
-		}
-		if err != nil {
-			// Assume that the previous batches were ok
-			// Close the channel and don't read more bets
-			log.Errorf("action: error_detected | result: success | client_id: %v | error: %s", ctx.ID, err.Error())
-			break
-		}
-		payload, count := batcher.MarshalBet()
-		req := protocol.Bet{
-			PayloadSize: uint32(len(payload)),
-			Count:       uint32(count),
-			AgencyID:    ctx.ID,
-			Payload:     payload,
-		}
-		ctx.Requests <- req
-	}
 }

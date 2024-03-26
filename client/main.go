@@ -2,8 +2,8 @@ package main
 
 import (
 	"bufio"
-	"io"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -152,9 +152,8 @@ func main() {
 	client := common.NewClient(rc, clientConfig)
 
 	signalChannel := make(chan os.Signal, 1)
-	doneChannel := make(chan struct{})
+	doneChannel := make(chan struct{}, 1)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
-	client.HandleSignals(signalChannel, doneChannel)
-
+	common.HandleSignals(client, signalChannel, doneChannel)
 	client.StartClientLoop()
 }
