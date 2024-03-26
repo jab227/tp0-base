@@ -23,6 +23,7 @@ func InitConfig() (*viper.Viper, error) {
 
 	// Configure viper to read env variables with the CLI_ prefix
 	v.AutomaticEnv()
+
 	v.SetEnvPrefix("cli")
 	// Use a replacer to replace env variables underscores with points. This let us
 	// use nested configurations in the config file and at the same time define
