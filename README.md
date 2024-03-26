@@ -141,6 +141,16 @@ all tests passed
 ```
 #### Ejercicio 4
 
+Para probar que tanto cliente como servidor terminan de forma
+_graceful_ al recibir *SIGTERM*, primero iniciamos los containers y
+abrimos los logs con los comandos vistos anteriormente. Luego desde
+otra terminal ejecutamos:
+
+`docker compose -f docker-compose-dev.yaml down -t 5 <nombre-servicio>`
+
+para enviar el *SIGTERM* al servicio en cuestión (si no se especifica
+se lo manda a todos), y deberíamos ver esto reflejado en los logs.
+
 ### Parte 2
 En los siguientes ejercicios se modifico tanto el cliente como el
 servidor que el caso de uso denominado *Loteria Nacional*. El
