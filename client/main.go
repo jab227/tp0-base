@@ -53,6 +53,7 @@ func InitConfig() (*viper.Viper, error) {
 	// the backoff time when the results aren't available
 	v.BindEnv("backoff")
 
+	v.SetDefault("batch.size", 8)
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but
 	// configuration can be loaded from the environment variables
@@ -150,7 +151,6 @@ func main() {
 		closer: f,
 	}
 	client := common.NewClient(rc, clientConfig)
-
 	signalChannel := make(chan os.Signal, 1)
 	doneChannel := make(chan struct{}, 1)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
