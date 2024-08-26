@@ -110,6 +110,8 @@ func main() {
 		LoopPeriod:    v.GetDuration("loop.period"),
 	}
 
-	client := common.NewClient(clientConfig)
+	handler := common.NewSignalHandler()
+	client := common.NewClient(clientConfig, handler.Done())
+	go handler.Run(client)
 	client.StartClientLoop()
 }
