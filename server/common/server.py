@@ -1,5 +1,7 @@
 import socket
 import logging
+import signal
+from common.signal_handler import sigterm_handler_init, SignalSIGTERM
 
 
 class Server:
@@ -28,7 +30,7 @@ class Server:
                 self.__handle_client_connection(client_sock)
                 client_sock = None
             except SignalSIGTERM as name:
-                                logging.info(f'action: signal | result: success | msg: received {name.signal}')                                
+                logging.info(f'action: signal | result: success | msg: received {name.signal}')                                
                 self._server_socket.close()
                 logging.info(f'action: close_socket | result: success | msg: "closed server socket"')
                 if client_sock:

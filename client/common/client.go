@@ -47,6 +47,7 @@ func (c *Client) createClientSocket() error {
 			c.config.ID,
 			err,
 		)
+		return err
 	}
 	c.conn = conn
 	return nil
@@ -81,7 +82,13 @@ func (c *Client) loop(msgID int) bool {
 	// Create the connection the server in every loop iteration. Send an
 	// TODO: Modify the send to avoid short-write
 	// Wait a time between sending one message and the next one
-	c.createClientSocket()
+
+	// NOTE(juan): There was a bug in this line, if the error isn't
+	// handled correctly when we try to write to the stream, the
+	// net.Conn is nil
+	if err := c.createClientSocket(); err != nil {
+		return false
+	}
 	fmt.Fprintf(
 		c.conn,
 		"[CLIENT %v] Message N°%v\n",

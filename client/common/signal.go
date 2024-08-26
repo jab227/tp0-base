@@ -21,7 +21,7 @@ func (s SignalHandler) Done() <-chan struct{} {
 
 func (s SignalHandler) Run() {
 	signal := <-s.signalCh
-	log.Infof("action: signal | result: success | client_id: %v | msg: received %s", c.config.ID, signal)
+	log.Infof("action: signal | result: success | signal: received %s", signal)
 	s.doneCh <- struct{}{}
 }
 

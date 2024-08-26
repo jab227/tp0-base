@@ -112,6 +112,6 @@ func main() {
 
 	handler := common.NewSignalHandler()
 	client := common.NewClient(clientConfig, handler.Done())
-	go handler.Run(client)
+	go handler.Run()
 	client.StartClientLoop()
 }
