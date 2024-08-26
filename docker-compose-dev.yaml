@@ -3,10 +3,12 @@ services:
   server:
     container_name: server
     image: server:latest
-    entrypoint: python3 /main.py
+    entrypoint: python3 ./main.py
     environment:
       - PYTHONUNBUFFERED=1
       - LOGGING_LEVEL=DEBUG
+    volumes:
+      - ./server:/echoserver
     networks:
       - testing_net
 
@@ -21,7 +23,8 @@ services:
       - testing_net
     depends_on:
       - server
-
+    volumes:
+      - ./client:/echoclient
 networks:
   testing_net:
     ipam:
