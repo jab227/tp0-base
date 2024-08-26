@@ -12,19 +12,20 @@ services:
     networks:
       - testing_net
 
-  client1:
-    container_name: client1
-    image: client:latest
-    entrypoint: /client
+  nctest:
+    container_name: nctest
+    build:
+      context: .
+      dockerfile: Dockerfile_nc
     environment:
-      - CLI_ID=1
-      - CLI_LOG_LEVEL=DEBUG
+      - SERVER_PORT=12345
     networks:
       - testing_net
+    volumes:
+      - ./:/scripts
     depends_on:
       - server
-    volumes:
-      - ./client:/echoclient
+    command: ./validar-echo-server.sh
 
 networks:
   testing_net:

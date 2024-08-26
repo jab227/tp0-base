@@ -2,7 +2,6 @@ SHELL := /bin/bash
 PWD := $(shell pwd)
 
 GIT_REMOTE = github.com/7574-sistemas-distribuidos/docker-compose-init
-
 default: build
 
 all:
@@ -18,11 +17,11 @@ build: deps
 docker-image:
 	docker build -f ./server/Dockerfile -t "server:latest" .
 	docker build -f ./client/Dockerfile -t "client:latest" .
-	# Execute this command from time to time to clean up intermediate stages generated 
-	# during client build (your hard drive will like this :) ). Don't left uncommented if you 
-	# want to avoid rebuilding client image every time the docker-compose-up command 
-	# is executed, even when client code has not changed
-	# docker rmi `docker images --filter label=intermediateStageToBeDeleted=true -q`
+# Execute this command from time to time to clean up intermediate stages generated 
+# during client build (your hard drive will like this :) ). Don't left uncommented if you 
+# want to avoid rebuilding client image every time the docker-compose-up command 
+# is executed, even when client code has not changed
+# docker rmi `docker images --filter label=intermediateStageToBeDeleted=true -q`
 .PHONY: docker-image
 
 docker-compose-up: docker-image
@@ -37,3 +36,16 @@ docker-compose-down:
 docker-compose-logs:
 	docker compose -f docker-compose-dev.yaml logs -f
 .PHONY: docker-compose-logs
+
+docker-compose-up-nc: docker-image
+	docker compose -f docker-compose-netcat.yaml up -d --build
+.PHONY: docker-compose-up-nc
+
+docker-compose-logs-nc:
+	docker compose -f docker-compose-netcat.yaml logs -f
+.PHONY: docker-compose-logs-nc
+
+docker-compose-down-nc:
+	docker compose -f docker-compose-netcat.yaml stop -t 1
+	docker compose -f docker-compose-netcat.yaml down
+.PHONY: docker-compose-down-nc
