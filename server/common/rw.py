@@ -6,7 +6,7 @@ def send_all(sock, data: bytes):
             raise RuntimeError("connection was closed")
         sent += n
 
-        
+
 def recv_all(sock, read_size: int) -> bytes:
     buf = []
     read = 0
