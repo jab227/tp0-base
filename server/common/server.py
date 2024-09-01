@@ -1,6 +1,8 @@
 import socket
 import logging
 import signal
+import common.protocol as protocol
+import common.utils as utils
 from common.signal_handler import sigterm_handler_init, SignalSIGTERM
 from common.rw import send_all, recv_all
 
@@ -31,12 +33,18 @@ class Server:
                 self.__handle_client_connection(client_sock)
                 client_sock = None
             except SignalSIGTERM as name:
-                logging.info(f'action: signal | result: success | msg: received {name.signal}')                                
+                logging.info(
+                    f'action: signal | result: success | msg: received {name.signal}'
+                )
                 self._server_socket.close()
-                logging.info(f'action: close_socket | result: success | msg: "closed server socket"')
+                logging.info(
+                    f'action: close_socket | result: success | msg: "closed server socket"'
+                )
                 if client_sock:
                     client_sock.close()
-                    logging.info(f'action:_close socket | result: success | msg: "closed client socket"')
+                    logging.info(
+                        f'action:_close socket | result: success | msg: "closed client socket"'
+                    )
                 return
 
     def __handle_client_connection(self, client_sock):
@@ -47,14 +55,16 @@ class Server:
         client socket will also be closed
         """
         try:
-            bet = recv_request
+            bet = recv_request(client_sock)
             utils.store_bets([bet])
-            write_acknowledge(bet.number, client_sock)
-            logging.info(f"action: apuesta_almacenada | result: success | dni: {bet.document}| numero: {bet.number}")
+            send_acknowledge(bet.number, client_sock)
+            logging.info(
+                f"action: apuesta_almacenada | result: success | dni: {bet.document}| numero: {bet.number}"
+            )
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")
         except RuntimeError as e:
-            logging.error(f"action: receive_message | result: fail | error: {e}")            
+            logging.error(f"action: receive_message | result: fail | error: {e}")
         finally:
             client_sock.close()
 
@@ -74,19 +84,18 @@ class Server:
 
 
 def __recv_header(sock) -> protocol.Header:
-    header_bytes = recv_all(sock, protocol.Header.HEADER_SIZE)
+    header_bytes = recv_all(sock, protocol.Header.SIZE)
     return protocol.Header.decode(header_bytes)
 
 
 def recv_request(sock) -> utils.Bet:
-    header = recv_header(sock)
+    header = __recv_header(sock)
     payload = recv_all(sock, header.payload_size)
-    req = Request(header, payload)
-    return req.parse_payload()
+    req = protocol.Request(header, payload)
+    return req.parse_bet()
 
 
 def send_acknowledge(bet_number: int, sock):
-    ack = protocol.Ack(bet_number)
+    ack = protocol.AcknowledgeResponse(bet_number)
     data = ack.encode()
-    send_all(sock, data)    
-
+    send_all(sock, data)

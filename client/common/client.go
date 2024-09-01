@@ -2,12 +2,12 @@ package common
 
 import (
 	"bufio"
-	"fmt"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/protocol"
 	"github.com/op/go-logging"
 	"io"
 	"net"
+	"strconv"
 	"time"
 )
 
@@ -63,7 +63,7 @@ type ServerResponse struct {
 }
 
 func SendBet(ID uint32, bet agency.Bet, rw io.ReadWriter) <-chan ServerResponse {
-	req := protocol.NewBetRequest(agencyID, bet)
+	req := protocol.NewBetRequest(ID, bet)
 	w := bufio.NewWriter(rw)
 	r := bufio.NewReader(rw)
 	responseChannel := make(chan ServerResponse, 1)
@@ -101,7 +101,11 @@ func (c *Client) StartClientLoop() {
 	if err != nil {
 		log.Fatalf("couldn't create bettor from env data: %s", err)
 	}
-	responseCh := SendBet(c.config.ID, bet, c.conn)
+	id, err := strconv.Atoi(c.config.ID)
+	if err != nil {
+		log.Fatalf("couldn't parse agency id from env data: %s", err)
+	}
+	responseCh := SendBet(uint32(id), bet, c.conn)
 	select {
 	case res := <-responseCh:
 		if res.err != nil {
@@ -111,9 +115,9 @@ func (c *Client) StartClientLoop() {
 		} else {
 			log.Infof("action: apuesta_enviada | result: success | documento: %s | numero: %d", c.bettor.DNI, res.ack.BetNumber)
 		}
-	case <-c.done:
+	case <-c.doneCh:
 		return
-	case <-time.After(c.config.Timeout):
+	case <-time.After(c.config.LoopPeriod):
 		log.Infof("action: timeout_detected | result: success | client_id: %v",
 			c.config.ID,
 		)

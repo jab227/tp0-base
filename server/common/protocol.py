@@ -46,5 +46,5 @@ class AcknowledgeResponse:
     SIZE = 4    
 
     def encode(self) -> bytes:
-        return int.to_bytes(self.bet_number, SIZE, byteorder='little')
+        return int.to_bytes(self.bet_number, self.SIZE, byteorder='little')
 
