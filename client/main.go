@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/common"
 )
 
@@ -38,6 +39,12 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("loop", "amount")
 	v.BindEnv("log", "level")
 
+	// Bet env variables
+	v.BindEnv("bettor", "nombre")
+	v.BindEnv("bettor", "apellido")
+	v.BindEnv("bettor", "documento")
+	v.BindEnv("bettor", "nacimiento")
+	v.BindEnv("bettor", "numbero")
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but configuration
 	// can be loaded from the environment variables so we shouldn't
@@ -90,6 +97,27 @@ func PrintConfig(v *viper.Viper) {
 	)
 }
 
+func PrintBettor(v *viper.Viper) {
+	log.Infof("action: bet | result: success | client_id: %s | nombre: %s | apellido: %s | nacimiento: %s | documento: %s | numero: %s",
+		v.GetString("id"),
+		v.GetString("bettor.nombre"),
+		v.GetString("bettor.apellido"),
+		v.GetString("bettor.nacimiento"),
+		v.GetString("bettor.documento"),
+		v.GetString("bettor.numero"))
+}
+
+func NewBetFromEnv(v *viper.Viper) agency.Bettor {
+	bettor := agency.Bettor{
+		Name:      v.GetString("bettor.nombre"),
+		Surname:   v.GetString("bettor.apellido"),
+		DNI:       v.GetString("bettor.documento"),
+		Birthdate: v.GetString("bettor.nacimiento"),
+		BetNumber: v.GetString("bettor.numero"),
+	}
+	return bettor
+}
+
 func main() {
 	v, err := InitConfig()
 	if err != nil {
@@ -102,16 +130,16 @@ func main() {
 
 	// Print program config with debugging purposes
 	PrintConfig(v)
-
+	PrintBettor(v)
 	clientConfig := common.ClientConfig{
 		ServerAddress: v.GetString("server.address"),
 		ID:            v.GetString("id"),
 		LoopAmount:    v.GetInt("loop.amount"),
 		LoopPeriod:    v.GetDuration("loop.period"),
 	}
-
+	bettor := NewBetFromEnv(v)
 	handler := common.NewSignalHandler()
-	client := common.NewClient(clientConfig, handler.Done())
+	client := common.NewClient(clientConfig, bettor, handler.Done())
 	go handler.Run()
 	client.StartClientLoop()
 }

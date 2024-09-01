@@ -3,10 +3,12 @@ package common
 import (
 	"bufio"
 	"fmt"
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/protocol"
+	"github.com/op/go-logging"
+	"io"
 	"net"
 	"time"
-
-	"github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("log")
@@ -21,6 +23,7 @@ type ClientConfig struct {
 
 // Client Entity that encapsulates how
 type Client struct {
+	bettor agency.Bettor
 	config ClientConfig
 	doneCh <-chan struct{}
 	conn   net.Conn
@@ -28,8 +31,9 @@ type Client struct {
 
 // NewClient Initializes a new client receiving the configuration
 // as a parameter
-func NewClient(config ClientConfig, done <-chan struct{}) *Client {
+func NewClient(config ClientConfig, bettor agency.Bettor, done <-chan struct{}) *Client {
 	client := &Client{
+		bettor: bettor,
 		doneCh: done,
 		config: config,
 	}
@@ -53,63 +57,67 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
-// StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop() {
-	// There is an autoincremental msgID to identify every message sent
-	// Messages if the message amount threshold has not been surpassed
-	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
-		select {
-		case <-c.doneCh:
-			if err := c.conn.Close(); err != nil {
-				log.Errorf("action: close_socket | result: failure | client_id: %v | error: %s", c.config.ID, err)
-			} else {
-				log.Infof("action: close_socket | result: success | client_id: %v | msg: closed client socket",
-					c.config.ID)
-			}
-			return
-		default:
-			ok := c.loop(msgID)
-			if !ok {
-				return
-			}
-		}
-
-	}
-	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+type ServerResponse struct {
+	ack protocol.BetAcknowledge
+	err error
 }
 
-func (c *Client) loop(msgID int) bool {
-	// Create the connection the server in every loop iteration. Send an
-	// TODO: Modify the send to avoid short-write
-	// Wait a time between sending one message and the next one
+func SendBet(ID uint32, bet agency.Bet, rw io.ReadWriter) <-chan ServerResponse {
+	req := protocol.NewBetRequest(agencyID, bet)
+	w := bufio.NewWriter(rw)
+	r := bufio.NewReader(rw)
+	responseChannel := make(chan ServerResponse, 1)
+	go func() {
+		if err := protocol.EncodeRequest(w, req); err != nil {
+			responseChannel <- ServerResponse{err: err}
+			return
+		}
+		w.Flush()
+		ack, err := protocol.DecodeResponse(r)
+		if err != nil {
+			responseChannel <- ServerResponse{err: err}
+			return
+		}
+		responseChannel <- ServerResponse{ack: ack}
+	}()
+	return responseChannel
+}
 
-	// NOTE(juan): There was a bug in this line, if the error isn't
-	// handled correctly when we try to write to the stream, the
-	// net.Conn is nil
+// StartClientLoop Send messages to the client until some time threshold is met
+func (c *Client) StartClientLoop() {
 	if err := c.createClientSocket(); err != nil {
-		return false
+		log.Fatalf("couldn't create client socket: %s", err)
 	}
-	fmt.Fprintf(
-		c.conn,
-		"[CLIENT %v] Message N°%v\n",
-		c.config.ID,
-		msgID,
-	)
-	msg, err := bufio.NewReader(c.conn).ReadString('\n')
-	c.conn.Close()
+	defer func() {
+		if err := c.conn.Close(); err != nil {
+			log.Errorf("action: close_socket | result: failure | client_id: %v | error: %s", c.config.ID, err)
+		} else {
+			log.Infof("action: close_socket | result: success | client_id: %v | msg: closed client socket",
+				c.config.ID)
+		}
+	}()
+
+	bet, err := agency.NewBet(c.bettor)
 	if err != nil {
-		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-			c.config.ID,
-			err,
-		)
-		return false
+		log.Fatalf("couldn't create bettor from env data: %s", err)
 	}
-
-	log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-		c.config.ID,
-		msg,
-	)
-
-	time.Sleep(c.config.LoopPeriod)
-	return true
+	responseCh := SendBet(c.config.ID, bet, c.conn)
+	select {
+	case res := <-responseCh:
+		if res.err != nil {
+			log.Errorf("action: apuesta_enviada | result: failure | client_id: %v | error: %s",
+				c.config.ID, res.err,
+			)
+		} else {
+			log.Infof("action: apuesta_enviada | result: success | documento: %s | numero: %d", c.bettor.DNI, res.ack.BetNumber)
+		}
+	case <-c.done:
+		return
+	case <-time.After(c.config.Timeout):
+		log.Infof("action: timeout_detected | result: success | client_id: %v",
+			c.config.ID,
+		)
+		return
+	}
+	log.Infof("action: client_finished | result: success | client_id: %v", c.config.ID)
 }
