@@ -2,6 +2,7 @@ import socket
 import logging
 import signal
 from common.signal_handler import sigterm_handler_init, SignalSIGTERM
+from common.rw import send_all, recv_all
 
 
 class Server:
@@ -46,14 +47,14 @@ class Server:
         client socket will also be closed
         """
         try:
-            # TODO: Modify the receive to avoid short-reads
-            msg = client_sock.recv(1024).rstrip().decode('utf-8')
-            addr = client_sock.getpeername()
-            logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg}')
-            # TODO: Modify the send to avoid short-writes
-            client_sock.send("{}\n".format(msg).encode('utf-8'))
+            bet = recv_request
+            utils.store_bets([bet])
+            write_acknowledge(bet.number, client_sock)
+            logging.info(f"action: apuesta_almacenada | result: success | dni: {bet.document}| numero: {bet.number}")
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")
+        except RuntimeError as e:
+            logging.error(f"action: receive_message | result: fail | error: {e}")            
         finally:
             client_sock.close()
 
@@ -70,3 +71,22 @@ class Server:
         c, addr = self._server_socket.accept()
         logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
         return c
+
+
+def __recv_header(sock) -> protocol.Header:
+    header_bytes = recv_all(sock, protocol.Header.HEADER_SIZE)
+    return protocol.Header.decode(header_bytes)
+
+
+def recv_request(sock) -> utils.Bet:
+    header = recv_header(sock)
+    payload = recv_all(sock, header.payload_size)
+    req = Request(header, payload)
+    return req.parse_payload()
+
+
+def send_acknowledge(bet_number: int, sock):
+    ack = protocol.Ack(bet_number)
+    data = ack.encode()
+    send_all(sock, data)    
+
