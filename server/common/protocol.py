@@ -26,9 +26,6 @@ class Header:
         return cls(kind=kind, agency_id=agency_id, payload_size=payload_size)
 
 
-4
-
-
 class Request:
     header: Header
     payload: bytes
