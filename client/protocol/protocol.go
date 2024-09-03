@@ -22,7 +22,8 @@ type MessageKind uint8
 
 const (
 	Bet      MessageKind = 0
-	BetBatch MessageKind = 1
+	BetBatch             = 1
+	BetBatchStop
 )
 
 type Header struct {
@@ -41,7 +42,10 @@ type BetAcknowledge struct {
 }
 
 func NewBetRequest(kind MessageKind, agencyId uint32, m Marshaler) BetRequest {
-	payload := m.MarshalPayload()
+	var payload []byte
+	if m != nil {
+		payload = m.MarshalPayload()
+	}
 	payloadSize := len(payload)
 	h := Header{
 		PayloadSize: uint32(payloadSize),

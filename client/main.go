@@ -7,11 +7,9 @@ import (
 	"github.com/spf13/viper"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
-	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/batch"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/common"
 )
 
@@ -41,11 +39,7 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("log", "level")
 
 	// Bet env variables
-	v.BindEnv("bettor", "nombre")
-	v.BindEnv("bettor", "apellido")
-	v.BindEnv("bettor", "documento")
-	v.BindEnv("bettor", "nacimiento")
-	v.BindEnv("bettor", "numbero")
+	v.BindEnv("socket", "timeout")
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but configuration
 	// can be loaded from the environment variables so we shouldn't
@@ -120,56 +114,41 @@ func NewBetFromEnv(v *viper.Viper) agency.Bettor {
 }
 
 func main() {
-	// v, err := InitConfig()
-	// if err != nil {
-	// 	log.Criticalf("%s", err)
-	// }
-
-	// if err := InitLogger(v.GetString("log.level")); err != nil {
-	// 	log.Criticalf("%s", err)
-	// }
-
-	// // Print program config with debugging purposes
-	// PrintConfig(v)
-	// PrintBettor(v)
-	// clientConfig := common.ClientConfig{
-	// 	ServerAddress: v.GetString("server.address"),
-	// 	ID:            v.GetString("id"),
-	// 	LoopAmount:    v.GetInt("loop.amount"),
-	// 	LoopPeriod:    v.GetDuration("loop.period"),
-	// }
-	// bettor := NewBetFromEnv(v)
-	// handler := common.NewSignalHandler()
-	// client := common.NewClient(clientConfig, bettor, handler.Done())
-	// go handler.Run()
-	// client.StartClientLoop()
-	f, _ := os.Open("a1.csv")
-
-	handler := common.NewSignalHandler()
-	batcher := batch.NewBatcher(10, 8*1024)
-	go handler.Run()
-	var wg sync.WaitGroup
-	wg.Add(1)
-	bets := common.BetScannerRun(f, &wg, handler.Done())
-	wg.Add(1)
-	chunks := common.BatchProcessor(batcher, &wg, bets, handler.Done())
-	i := 0
-	for {
-		select {
-		case <-handler.Done():
-			wg.Wait()
-			return
-		case r, more := <-chunks:
-			if r.Err != nil {
-				fmt.Println(r.Err)
-				return
-			}
-			if !more {
-				fmt.Println("exit")
-				return
-			}
-			i += 1
-			fmt.Println(i)
-		}
+	v, err := InitConfig()
+	if err != nil {
+		log.Criticalf("%s", err)
 	}
+
+	if err := InitLogger(v.GetString("log.level")); err != nil {
+		log.Criticalf("%s", err)
+	}
+
+	// Print program config with debugging purposes
+	PrintConfig(v)
+	PrintBettor(v)
+	clientConfig := common.ClientConfig{
+		ServerAddress: v.GetString("server.address"),
+		ID:            v.GetString("id"),
+		LoopAmount:    v.GetInt("loop.amount"),
+		LoopPeriod:    v.GetDuration("loop.period"),
+		SocketTimeout: v.GetDuration("socket.timeout"),
+	}
+
+	filename := fmt.Sprintf("../.data/dataset/agency-%s.csv", clientConfig.ID)
+	f, err := os.Open(filename)
+	if err != nil {
+		log.Fatalf("couldn't open bets file: %s", err)
+	}
+	handler := common.NewSignalHandler()
+	go handler.Run()
+	batchProcessor := common.NewBatchProcessor(
+		f,
+		common.BatcherConfig{
+			MaxCount: v.GetInt("batch.maxAmount"),
+			MaxSize:  8 * 1024,
+		},
+		handler.Done())
+	chunks := batchProcessor.Run()
+	client := common.NewClient(clientConfig, chunks, handler.Done())
+	client.StartClientLoop()
 }

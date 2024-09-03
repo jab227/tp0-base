@@ -19,11 +19,11 @@ type ClientConfig struct {
 	ServerAddress string
 	LoopAmount    int
 	LoopPeriod    time.Duration
+	SocketTimeout time.Duration
 }
 
 // Client Entity that encapsulates how
 type Client struct {
-	bettor agency.Bettor
 	config ClientConfig
 	chunks <-chan BatchResult
 	doneCh <-chan struct{}
@@ -32,11 +32,11 @@ type Client struct {
 
 // NewClient Initializes a new client receiving the configuration
 // as a parameter
-func NewClient(config ClientConfig, bettor agency.Bettor, chunks <-chan BatchResult, done <-chan struct{}) *Client {
+func NewClient(config ClientConfig, chunks <-chan BatchResult, done <-chan struct{}) *Client {
 	client := &Client{
-		bettor: bettor,
 		doneCh: done,
 		config: config,
+		chunks: chunks,
 	}
 	return client
 }
@@ -63,13 +63,30 @@ type ServerResponse struct {
 	err error
 }
 
+type Request struct {
+	m    protocol.Marshaler
+	ID   uint32
+	kind protocol.MessageKind
+}
+
 // TODO(JUAN) change to SendRequest
-func SendBet(ID uint32, bet agency.Bet, rw io.ReadWriter) <-chan ServerResponse {
-	req := protocol.NewBetRequest(ID, bet)
+func SendRequests(rw io.ReadWriter, requests <-chan Request) <-chan ServerResponse {
+	//
 	w := bufio.NewWriter(rw)
 	r := bufio.NewReader(rw)
 	responseChannel := make(chan ServerResponse, 1)
 	go func() {
+		var id uint32
+		for incoming := range requests {
+			req := protocol.NewBetRequest(incoming.kind, incoming.ID, incoming.m)
+			id = incoming.ID
+			if err := protocol.EncodeRequest(w, req); err != nil {
+				responseChannel <- ServerResponse{err: err}
+				return
+			}
+			w.Flush()
+		}
+		req := protocol.NewBetRequest(protocol.BetBatchStop, id, nil)
 		if err := protocol.EncodeRequest(w, req); err != nil {
 			responseChannel <- ServerResponse{err: err}
 			return
@@ -99,31 +116,37 @@ func (c *Client) StartClientLoop() {
 		}
 	}()
 
-	bet, err := agency.NewBet(c.bettor)
-	if err != nil {
-		log.Fatalf("couldn't create bettor from env data: %s", err)
-	}
 	id, err := strconv.Atoi(c.config.ID)
 	if err != nil {
 		log.Fatalf("couldn't parse agency id from env data: %s", err)
 	}
-	responseCh := SendBet(uint32(id), bet, c.conn)
+	requests := make(chan Request, 1)
+	go func() {
+		id := uint32(id)
+		for r := range c.chunks {
+			if r.Err != nil {
+				log.Errorf("couldn't create request: %s", err)
+				continue
+			}
+			requests <- Request{ID: id, kind: protocol.BetBatch, m: r.Chunk}
+		}
+	}()
+
+	responseCh := SendRequests(c.conn, requests)
 	select {
 	case res := <-responseCh:
 		if res.err != nil {
 			log.Errorf("action: apuesta_enviada | result: failure | client_id: %v | error: %s",
 				c.config.ID, res.err,
 			)
-		} else {
-			log.Infof("action: apuesta_enviada | result: success | documento: %s | numero: %d", c.bettor.DNI, res.ack.BetNumber)
 		}
+		return
 	case <-c.doneCh:
 		return
-	case <-time.After(c.config.LoopPeriod):
+	case <-time.After(c.config.SocketTimeout):
 		log.Infof("action: timeout_detected | result: success | client_id: %v",
 			c.config.ID,
 		)
 		return
 	}
-	log.Infof("action: client_finished | result: success | client_id: %v", c.config.ID)
 }
