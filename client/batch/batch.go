@@ -1,12 +1,16 @@
 package batch
 
 import (
+	"encoding/binary"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
+	"unsafe"
 )
 
 const (
 	kilobytes = (1 << 10)
 )
+
+var sizeofBetLen = int(unsafe.Sizeof(uint32(0)))
 
 type Chunk struct {
 	buf      []byte
@@ -42,16 +46,19 @@ func (c *Chunk) capacity() int {
 func (c *Chunk) tryPush(b []byte) bool {
 	currSize := c.size()
 	currCapacity := c.capacity()
-	if c.count == c.maxCount || currSize+len(b) >= currCapacity {
+	if c.count == c.maxCount || currSize+len(b)+sizeofBetLen >= currCapacity {
 		return false
 	}
+	a := make([]byte, 4)
+	binary.LittleEndian.PutUint32(a, uint32(len(b)))
+	c.buf = append(c.buf, a...)
 	c.buf = append(c.buf, b...)
 	c.count += 1
 	assertMaxSize(c)
 	return true
 }
 
-func (c Chunk) Bytes() []byte {
+func (c Chunk) MarshalPayload() []byte {
 	return c.buf
 }
 
@@ -72,9 +79,8 @@ func (b *Batcher) Push(bet agency.Bet) {
 	if b.length == 0 {
 		b.addChunk()
 	}
-	betBytes := bet.MarshalBet()
+	betBytes := bet.MarshalPayload()
 	lastChunk := b.getLast()
-
 	if ok := lastChunk.tryPush(betBytes); !ok {
 		b.next = b.length - 1
 		lastChunk.full = true

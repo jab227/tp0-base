@@ -25,13 +25,14 @@ type ClientConfig struct {
 type Client struct {
 	bettor agency.Bettor
 	config ClientConfig
+	chunks <-chan BatchResult
 	doneCh <-chan struct{}
 	conn   net.Conn
 }
 
 // NewClient Initializes a new client receiving the configuration
 // as a parameter
-func NewClient(config ClientConfig, bettor agency.Bettor, done <-chan struct{}) *Client {
+func NewClient(config ClientConfig, bettor agency.Bettor, chunks <-chan BatchResult, done <-chan struct{}) *Client {
 	client := &Client{
 		bettor: bettor,
 		doneCh: done,
@@ -62,6 +63,7 @@ type ServerResponse struct {
 	err error
 }
 
+// TODO(JUAN) change to SendRequest
 func SendBet(ID uint32, bet agency.Bet, rw io.ReadWriter) <-chan ServerResponse {
 	req := protocol.NewBetRequest(ID, bet)
 	w := bufio.NewWriter(rw)

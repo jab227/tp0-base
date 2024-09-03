@@ -15,13 +15,14 @@ var (
 )
 
 type Marshaler interface {
-	MarshalBet() []byte
+	MarshalPayload() []byte
 }
 
 type MessageKind uint8
 
 const (
-	Bet MessageKind = iota
+	Bet      MessageKind = 0
+	BetBatch MessageKind = 1
 )
 
 type Header struct {
@@ -39,13 +40,13 @@ type BetAcknowledge struct {
 	BetNumber uint32
 }
 
-func NewBetRequest(agencyId uint32, m Marshaler) BetRequest {
-	payload := m.MarshalBet()
+func NewBetRequest(kind MessageKind, agencyId uint32, m Marshaler) BetRequest {
+	payload := m.MarshalPayload()
 	payloadSize := len(payload)
 	h := Header{
 		PayloadSize: uint32(payloadSize),
 		AgencyID:    agencyId,
-		Kind:        Bet,
+		Kind:        kind,
 	}
 	return BetRequest{h: h, payload: payload}
 }

@@ -46,7 +46,7 @@ func NewBet(b Bettor) (Bet, error) {
 	}, nil
 }
 
-func (b Bet) MarshalBet() []byte {
+func (b Bet) MarshalPayload() []byte {
 	return []byte(fmt.Sprintf("%s,%s,%s,%s,%d",
 		b.name,
 		b.surname,
