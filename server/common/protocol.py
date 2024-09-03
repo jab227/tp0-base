@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Union
 from typing import Optional
 from dataclasses import dataclass
 import common.utils as utils
@@ -8,6 +9,12 @@ PAYLOAD_FIELD_COUNT = 5
 
 class MessageKind(Enum):
     POST_BET = 0
+    BET_BATCH = 1
+    BET_BATCH_END = 2
+
+
+class BatchEnd:
+    pass
 
 
 @dataclass
@@ -34,7 +41,7 @@ class Request:
         self.header = header
         self.payload = payload
 
-    def parse_bet(self):
+    def __parse_bet() -> utils.Bet:
         fields = self.payload.split(b',')
         if len(fields) != PAYLOAD_FIELD_COUNT:
             raise RuntimeError(f"wrong number of fields in payload: {len(fields)}")
@@ -42,6 +49,32 @@ class Request:
         return utils.Bet(
             self.header.agency_id, fields[0], fields[1], fields[2], fields[3], fields[4]
         )
+
+    def parse(self) -> Union[list[utils.Bet], BatchEnd]:
+        bets = []
+        if self.header.kind == MessageKind.BET_BATCH:
+            i = 0
+            p = self.payload
+            while i < len(self.payload):
+                bet_size = int.from_bytes(p[i : i + 4], byteorder='little')
+                i += 4
+                bet_data = p[i : i + bet_size]
+                bet = __parse_bet(self.header.agency_id, bet_data)
+                i += bet_size
+                bets.append(bet)
+        elif self.header.kind == MessageKind.BET_BATCH_END:
+            return BatchEnd()
+        else:
+            bets.append(__parse_bet(self.header.agency_id, bet_data))
+        return bets
+
+
+def __parse_bet(bet_data: bytes, id: int) -> utils.Bet:
+    fields = bet_data.split(b',')
+    if len(fields) != PAYLOAD_FIELD_COUNT:
+        raise RuntimeError(f"wrong number of fields in payload: {len(fields)}")
+    fields = list(map(lambda f: f.decode("utf-8"), fields))
+    return utils.Bet(str(id), fields[0], fields[1], fields[2], fields[3], fields[4])
 
 
 @dataclass

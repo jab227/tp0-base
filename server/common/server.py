@@ -4,6 +4,7 @@ import signal
 import common.protocol as protocol
 import common.utils as utils
 from common.signal_handler import sigterm_handler_init, SignalSIGTERM
+from typing import Union
 from common.rw import send_all, recv_all
 
 
@@ -55,14 +56,18 @@ class Server:
         client socket will also be closed
         """
         try:
-            bet = recv_request(client_sock)
-            utils.store_bets([bet])
-            send_acknowledge(bet.number, client_sock)
-            logging.info(
-                f"action: apuesta_almacenada | result: success | dni: {bet.document}| numero: {bet.number}"
-            )
+            req = recv_request(client_sock)
+            if isinstance(req, protocol.BatchEnd):
+                logging.info(f"action: fin batch | result: success")
+            else:
+                utils.store_bets(req)
+                logging.info(
+                f"action: apuesta_almacenada | result: kind | cantidad: {len(req)}"
+            )                
+            send_acknowledge(42, client_sock)
+
         except OSError as e:
-            logging.error("action: receive_message | result: fail | error: {e}")
+            logging.error(f"action: receive_message | result: fail | error: {e}")
         except RuntimeError as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
         finally:
@@ -88,11 +93,11 @@ def __recv_header(sock) -> protocol.Header:
     return protocol.Header.decode(header_bytes)
 
 
-def recv_request(sock) -> utils.Bet:
+def recv_request(sock) -> Union[list[utils.Bet], protocol.BatchEnd]:
     header = __recv_header(sock)
     payload = recv_all(sock, header.payload_size)
     req = protocol.Request(header, payload)
-    return req.parse_bet()
+    return req.parse()
 
 
 def send_acknowledge(bet_number: int, sock):

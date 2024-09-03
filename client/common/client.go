@@ -2,10 +2,9 @@ package common
 
 import (
 	"bufio"
-	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/protocol"
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/utils"
 	"github.com/op/go-logging"
-	"io"
 	"net"
 	"strconv"
 	"time"
@@ -70,7 +69,7 @@ type Request struct {
 }
 
 // TODO(JUAN) change to SendRequest
-func SendRequests(rw io.ReadWriter, requests <-chan Request) <-chan ServerResponse {
+func SendRequests(rw utils.DeadlineReadWriter, requests <-chan Request, timeout time.Duration) <-chan ServerResponse {
 	//
 	w := bufio.NewWriter(rw)
 	r := bufio.NewReader(rw)
@@ -78,13 +77,22 @@ func SendRequests(rw io.ReadWriter, requests <-chan Request) <-chan ServerRespon
 	go func() {
 		var id uint32
 		for incoming := range requests {
+			log.Debugf("incoming: %v", incoming)
 			req := protocol.NewBetRequest(incoming.kind, incoming.ID, incoming.m)
 			id = incoming.ID
+			rw.SetWriteDeadline(time.Now().Add(timeout))
 			if err := protocol.EncodeRequest(w, req); err != nil {
 				responseChannel <- ServerResponse{err: err}
 				return
 			}
 			w.Flush()
+			rw.SetReadDeadline(time.Now().Add(timeout))
+			ack, err := protocol.DecodeResponse(r)
+			if err != nil {
+				responseChannel <- ServerResponse{err: err}
+				return
+			}
+			responseChannel <- ServerResponse{ack: ack}
 		}
 		req := protocol.NewBetRequest(protocol.BetBatchStop, id, nil)
 		if err := protocol.EncodeRequest(w, req); err != nil {
@@ -92,21 +100,22 @@ func SendRequests(rw io.ReadWriter, requests <-chan Request) <-chan ServerRespon
 			return
 		}
 		w.Flush()
-		ack, err := protocol.DecodeResponse(r)
+		_, err := protocol.DecodeResponse(r)
 		if err != nil {
 			responseChannel <- ServerResponse{err: err}
 			return
 		}
-		responseChannel <- ServerResponse{ack: ack}
+		close(responseChannel)
 	}()
 	return responseChannel
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop() {
+func (c *Client) StartClientLoop(p *BatchProcessor) {
 	if err := c.createClientSocket(); err != nil {
 		log.Fatalf("couldn't create client socket: %s", err)
 	}
+	log.Debug("client socket created")
 	defer func() {
 		if err := c.conn.Close(); err != nil {
 			log.Errorf("action: close_socket | result: failure | client_id: %v | error: %s", c.config.ID, err)
@@ -122,31 +131,35 @@ func (c *Client) StartClientLoop() {
 	}
 	requests := make(chan Request, 1)
 	go func() {
+		log.Debug("request producer started")
 		id := uint32(id)
 		for r := range c.chunks {
 			if r.Err != nil {
 				log.Errorf("couldn't create request: %s", err)
 				continue
 			}
+			log.Debug("sending request")
 			requests <- Request{ID: id, kind: protocol.BetBatch, m: r.Chunk}
 		}
 	}()
 
-	responseCh := SendRequests(c.conn, requests)
-	select {
-	case res := <-responseCh:
-		if res.err != nil {
-			log.Errorf("action: apuesta_enviada | result: failure | client_id: %v | error: %s",
-				c.config.ID, res.err,
-			)
+	responseCh := SendRequests(c.conn, requests, c.config.SocketTimeout)
+	log.Debug("looper")
+	for {
+		select {
+		case res, more := <-responseCh:
+			log.Debug("response received")
+			if !more {
+				return
+			}
+			if res.err != nil {
+				log.Errorf("action: apuesta_enviada | result: failure | client_id: %v | error: %s",
+					c.config.ID, res.err,
+				)
+			}
+		case <-c.doneCh:
+			p.Wait()
+			return
 		}
-		return
-	case <-c.doneCh:
-		return
-	case <-time.After(c.config.SocketTimeout):
-		log.Infof("action: timeout_detected | result: success | client_id: %v",
-			c.config.ID,
-		)
-		return
 	}
 }

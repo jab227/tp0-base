@@ -3,7 +3,14 @@ package utils
 import (
 	"github.com/pkg/errors"
 	"io"
+	"time"
 )
+
+type DeadlineReadWriter interface {
+	io.ReadWriter
+	SetReadDeadline(t time.Time) error
+	SetWriteDeadline(t time.Time) error
+}
 
 // Reads at least len(p) bytes
 func ReadAtLeast(r io.Reader, p []byte) error {

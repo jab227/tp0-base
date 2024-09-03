@@ -45,7 +45,7 @@ type BatchResult struct {
 
 type BatchProcessor struct {
 	done    <-chan struct{}
-	bets    chan betResult
+	bets    <-chan betResult
 	rc      io.ReadCloser
 	batcher *batch.Batcher
 	wg      *sync.WaitGroup
@@ -64,19 +64,19 @@ func NewBatchProcessor(
 	wg := new(sync.WaitGroup)
 	batcher := batch.NewBatcher(conf.MaxCount, conf.MaxSize)
 	return &BatchProcessor{
-		batcher:    batcher,
-		wg:   wg,
-		done: done,
-		rc: rc,
+		batcher: batcher,
+		wg:      wg,
+		done:    done,
+		rc:      rc,
 	}
 }
 
-func (b *BatchProcessor) betScannerStart() {
-	b.bets = make(chan betResult, 1)
+func (b *BatchProcessor) betScannerStart() <-chan betResult {
+	betsCh := make(chan betResult, 1)
 	go func() {
 		defer b.rc.Close()
 		defer b.wg.Done()
-		defer close(b.bets)
+		defer close(betsCh)
 
 		var lineNumber int = 1
 		scanner := bufio.NewScanner(b.rc)
@@ -93,23 +93,22 @@ func (b *BatchProcessor) betScannerStart() {
 				if l == "" {
 					return
 				}
-				// REMOVE(Juan): just for debugging purposes
-				fmt.Println(l)
 				bet, err := parseBetFromLine(l)
 				if err != nil {
 					err = errors.Wrapf(err, "line %d", lineNumber)
-					b.bets <- betResult{Err: err}
+					betsCh <- betResult{Err: err}
 					return
 				}
-				b.bets <- betResult{Bet: bet}
+				betsCh <- betResult{Bet: bet}
 				lineNumber += 1
 			}
 			if err := scanner.Err(); err != nil {
-				b.bets <- betResult{Err: err}
+				betsCh <- betResult{Err: err}
 				return
 			}
 		}
 	}()
+	return betsCh
 }
 
 func (b *BatchProcessor) batcherStart() <-chan BatchResult {
@@ -138,6 +137,7 @@ func (b *BatchProcessor) batcherStart() <-chan BatchResult {
 				if !ok {
 					continue
 				}
+				log.Debug("looping batch")
 				resultCh <- BatchResult{Chunk: chunk}
 			}
 		}
@@ -151,6 +151,6 @@ func (b *BatchProcessor) Wait() {
 
 func (b *BatchProcessor) Run() <-chan BatchResult {
 	b.wg.Add(2)
-	b.betScannerStart()
+	b.bets = b.betScannerStart()
 	return b.batcherStart()
 }

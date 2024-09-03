@@ -83,12 +83,13 @@ func InitLogger(logLevel string) error {
 // PrintConfig Print all the configuration parameters of the program.
 // For debugging purposes only
 func PrintConfig(v *viper.Viper) {
-	log.Infof("action: config | result: success | client_id: %s | server_address: %s | loop_amount: %v | loop_period: %v | log_level: %s",
+	log.Infof("action: config | result: success | client_id: %s | server_address: %s | loop_amount: %v | loop_period: %v | log_level: %s | socket_timeout: %v",
 		v.GetString("id"),
 		v.GetString("server.address"),
 		v.GetInt("loop.amount"),
 		v.GetDuration("loop.period"),
 		v.GetString("log.level"),
+		v.GetDuration("socket.timeout"),
 	)
 }
 
@@ -125,7 +126,6 @@ func main() {
 
 	// Print program config with debugging purposes
 	PrintConfig(v)
-	PrintBettor(v)
 	clientConfig := common.ClientConfig{
 		ServerAddress: v.GetString("server.address"),
 		ID:            v.GetString("id"),
@@ -133,8 +133,7 @@ func main() {
 		LoopPeriod:    v.GetDuration("loop.period"),
 		SocketTimeout: v.GetDuration("socket.timeout"),
 	}
-
-	filename := fmt.Sprintf("../.data/dataset/agency-%s.csv", clientConfig.ID)
+	filename := fmt.Sprintf("/.data/dataset/agency-%s.csv", clientConfig.ID)
 	f, err := os.Open(filename)
 	if err != nil {
 		log.Fatalf("couldn't open bets file: %s", err)
@@ -150,5 +149,5 @@ func main() {
 		handler.Done())
 	chunks := batchProcessor.Run()
 	client := common.NewClient(clientConfig, chunks, handler.Done())
-	client.StartClientLoop()
+	client.StartClientLoop(batchProcessor)
 }
