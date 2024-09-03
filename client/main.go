@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"strings"
-	"time"
-
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
+	"os"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/batch"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/common"
 )
 
@@ -119,27 +120,56 @@ func NewBetFromEnv(v *viper.Viper) agency.Bettor {
 }
 
 func main() {
-	v, err := InitConfig()
-	if err != nil {
-		log.Criticalf("%s", err)
-	}
+	// v, err := InitConfig()
+	// if err != nil {
+	// 	log.Criticalf("%s", err)
+	// }
 
-	if err := InitLogger(v.GetString("log.level")); err != nil {
-		log.Criticalf("%s", err)
-	}
+	// if err := InitLogger(v.GetString("log.level")); err != nil {
+	// 	log.Criticalf("%s", err)
+	// }
 
-	// Print program config with debugging purposes
-	PrintConfig(v)
-	PrintBettor(v)
-	clientConfig := common.ClientConfig{
-		ServerAddress: v.GetString("server.address"),
-		ID:            v.GetString("id"),
-		LoopAmount:    v.GetInt("loop.amount"),
-		LoopPeriod:    v.GetDuration("loop.period"),
-	}
-	bettor := NewBetFromEnv(v)
+	// // Print program config with debugging purposes
+	// PrintConfig(v)
+	// PrintBettor(v)
+	// clientConfig := common.ClientConfig{
+	// 	ServerAddress: v.GetString("server.address"),
+	// 	ID:            v.GetString("id"),
+	// 	LoopAmount:    v.GetInt("loop.amount"),
+	// 	LoopPeriod:    v.GetDuration("loop.period"),
+	// }
+	// bettor := NewBetFromEnv(v)
+	// handler := common.NewSignalHandler()
+	// client := common.NewClient(clientConfig, bettor, handler.Done())
+	// go handler.Run()
+	// client.StartClientLoop()
+	f, _ := os.Open("a1.csv")
+
 	handler := common.NewSignalHandler()
-	client := common.NewClient(clientConfig, bettor, handler.Done())
+	batcher := batch.NewBatcher(10, 8*1024)
 	go handler.Run()
-	client.StartClientLoop()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	bets := common.BetScannerRun(f, &wg, handler.Done())
+	wg.Add(1)
+	chunks := common.BatchProcessor(batcher, &wg, bets, handler.Done())
+	i := 0
+	for {
+		select {
+		case <-handler.Done():
+			wg.Wait()
+			return
+		case r, more := <-chunks:
+			if r.Err != nil {
+				fmt.Println(r.Err)
+				return
+			}
+			if !more {
+				fmt.Println("exit")
+				return
+			}
+			i += 1
+			fmt.Println(i)
+		}
+	}
 }
