@@ -99,11 +99,17 @@ func (b *Batcher) Next() (Chunk, bool) {
 	return chunk, true
 }
 
-func (b *Batcher) Flush() (Chunk, bool) {
+func (b *Batcher) Flush() ([]Chunk, bool) {
 	if len(b.chunks) == 0 {
-		return Chunk{}, false
+		return nil, false
 	}
-	chunk := b.chunks[b.current]
-	b.chunks = removeOrdered(b.chunks, b.current)
-	return chunk, true
+	chunks := make([]Chunk, 0,len(b.full)+1)
+	currentChunk := b.chunks[b.current]
+	chunks = append(chunks, currentChunk)
+	for i := range b.full {
+		chunks = append(chunks, b.chunks[i])
+	}
+	b.chunks = nil
+	b.full = nil
+	return chunks, true
 }
