@@ -55,17 +55,26 @@ class Server:
         If a problem arises in the communication with the client, the
         client socket will also be closed
         """
-        try:
-            req = recv_request(client_sock)
-            if isinstance(req, protocol.BatchEnd):
-                logging.info(f"action: fin batch | result: success")
-            else:
-                utils.store_bets(req)
-                logging.info(
-                f"action: apuesta_almacenada | result: kind | cantidad: {len(req)}"
-            )                
-            send_acknowledge(42, client_sock)
 
+        try:
+            while True:
+                try:
+                    req = recv_request(client_sock)
+                    if isinstance(req, protocol.BatchEnd):
+                        logging.info(f"action: fin batch | result: success")
+                        send_acknowledge(0, client_sock )                       
+                        client_sock.close()
+                        return
+                    else:
+                        length = len(req)                
+                        utils.store_bets(req)
+                        logging.info(
+                            f"action: apuesta_recibida | result: success | cantidad: {length}"
+                        )                
+                        send_acknowledge(0, client_sock)
+                except protocol.BetParseError as e:
+                         logging.error( f"action: apuesta_recibida | result: fail | cantidad: {e}")
+                         send_acknowledge(1, client_sock)
         except OSError as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
         except RuntimeError as e:

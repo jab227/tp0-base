@@ -21,9 +21,9 @@ type Marshaler interface {
 type MessageKind uint8
 
 const (
-	Bet      MessageKind = 0
-	BetBatch             = 1
-	BetBatchStop
+	Bet          MessageKind = 0
+	BetBatch                 = 1
+	BetBatchStop             = 2
 )
 
 type Header struct {
@@ -38,7 +38,7 @@ type BetRequest struct {
 }
 
 type BetAcknowledge struct {
-	BetNumber uint32
+	Status uint8
 }
 
 func NewBetRequest(kind MessageKind, agencyId uint32, m Marshaler) BetRequest {
@@ -80,8 +80,8 @@ func DecodeResponse(r io.Reader) (BetAcknowledge, error) {
 		err = errors.Wrap(err, "couldn't decode response")
 		return BetAcknowledge{}, err
 	}
-	betNumber := binary.LittleEndian.Uint32(buf[:])
+	betNumber := buf[0]
 	return BetAcknowledge{
-		BetNumber: betNumber,
+		Status: uint8(betNumber),
 	}, nil
 }

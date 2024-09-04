@@ -119,10 +119,13 @@ func (b *BatchProcessor) batcherStart() <-chan BatchResult {
 		for {
 			select {
 			case <-b.done:
-				fmt.Println("done batcher")
 				return
 			case r, more := <-b.bets:
 				if !more {
+					chunk, ok := b.batcher.Flush()
+					if ok {
+						resultCh <- BatchResult{Chunk: chunk}
+					}
 					return
 				}
 				if r.Err != nil {
@@ -130,14 +133,12 @@ func (b *BatchProcessor) batcherStart() <-chan BatchResult {
 					resultCh <- BatchResult{Err: err}
 					return
 				}
-
 				bet := r.Bet
 				b.batcher.Push(bet)
 				chunk, ok := b.batcher.Next()
 				if !ok {
 					continue
 				}
-				log.Debug("looping batch")
 				resultCh <- BatchResult{Chunk: chunk}
 			}
 		}
@@ -145,7 +146,7 @@ func (b *BatchProcessor) batcherStart() <-chan BatchResult {
 	return resultCh
 }
 
-func (b *BatchProcessor) Wait() {
+func (b *BatchProcessor) Stop() {
 	b.wg.Wait()
 }
 

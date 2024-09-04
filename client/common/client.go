@@ -76,15 +76,17 @@ func SendRequests(rw utils.DeadlineReadWriter, requests <-chan Request, timeout 
 	responseChannel := make(chan ServerResponse, 1)
 	go func() {
 		var id uint32
+		defer close(responseChannel)
 		for incoming := range requests {
-			log.Debugf("incoming: %v", incoming)
 			req := protocol.NewBetRequest(incoming.kind, incoming.ID, incoming.m)
 			id = incoming.ID
+
 			rw.SetWriteDeadline(time.Now().Add(timeout))
 			if err := protocol.EncodeRequest(w, req); err != nil {
 				responseChannel <- ServerResponse{err: err}
 				return
 			}
+
 			w.Flush()
 			rw.SetReadDeadline(time.Now().Add(timeout))
 			ack, err := protocol.DecodeResponse(r)
@@ -100,12 +102,12 @@ func SendRequests(rw utils.DeadlineReadWriter, requests <-chan Request, timeout 
 			return
 		}
 		w.Flush()
-		_, err := protocol.DecodeResponse(r)
+		ack, err := protocol.DecodeResponse(r)
 		if err != nil {
 			responseChannel <- ServerResponse{err: err}
 			return
 		}
-		close(responseChannel)
+		responseChannel <- ServerResponse{ack: ack}
 	}()
 	return responseChannel
 }
@@ -131,24 +133,21 @@ func (c *Client) StartClientLoop(p *BatchProcessor) {
 	}
 	requests := make(chan Request, 1)
 	go func() {
-		log.Debug("request producer started")
 		id := uint32(id)
+		defer close(requests)
 		for r := range c.chunks {
 			if r.Err != nil {
 				log.Errorf("couldn't create request: %s", err)
 				continue
 			}
-			log.Debug("sending request")
 			requests <- Request{ID: id, kind: protocol.BetBatch, m: r.Chunk}
 		}
 	}()
 
 	responseCh := SendRequests(c.conn, requests, c.config.SocketTimeout)
-	log.Debug("looper")
 	for {
 		select {
 		case res, more := <-responseCh:
-			log.Debug("response received")
 			if !more {
 				return
 			}
@@ -158,7 +157,7 @@ func (c *Client) StartClientLoop(p *BatchProcessor) {
 				)
 			}
 		case <-c.doneCh:
-			p.Wait()
+			p.Stop()
 			return
 		}
 	}

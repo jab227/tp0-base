@@ -24,7 +24,7 @@ type Bet struct {
 	number    uint32
 }
 
-const timeLayout = "2006-01-2"
+const timeLayout = "2006-01-02"
 
 func NewBet(b Bettor) (Bet, error) {
 	parsedBirthdate, err := time.Parse(timeLayout, b.Birthdate)

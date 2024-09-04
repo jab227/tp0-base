@@ -2,7 +2,8 @@ package batch
 
 import (
 	"encoding/binary"
-	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/agency"
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/protocol"
+	"github.com/op/go-logging"
 	"unsafe"
 )
 
@@ -10,52 +11,24 @@ const (
 	kilobytes = (1 << 10)
 )
 
+var log = logging.MustGetLogger("log")
 var sizeofBetLen = int(unsafe.Sizeof(uint32(0)))
 
 type Chunk struct {
-	buf      []byte
-	count    int
-	maxCount int
-	full     bool
+	buf   []byte
+	count int
+	full  bool
 }
 
 // only for assertion
 var maxChunkSize int
 
-func assertMaxSize(c *Chunk) {
-	if c.capacity() != maxChunkSize {
-		panic("capacity of the chunk must be always maxChunkSize")
-	}
-}
-
 func newChunk(maxCount, maxSize int) Chunk {
-	buf := make([]byte, maxCount, maxSize)
+	buf := make([]byte, 0, maxSize)
 	return Chunk{
-		buf: buf, maxCount: maxCount,
+		buf: buf,
 	}
-}
 
-func (c *Chunk) size() int {
-	return len(c.buf)
-}
-
-func (c *Chunk) capacity() int {
-	return cap(c.buf)
-}
-
-func (c *Chunk) tryPush(b []byte) bool {
-	currSize := c.size()
-	currCapacity := c.capacity()
-	if c.count == c.maxCount || currSize+len(b)+sizeofBetLen >= currCapacity {
-		return false
-	}
-	a := make([]byte, 4)
-	binary.LittleEndian.PutUint32(a, uint32(len(b)))
-	c.buf = append(c.buf, a...)
-	c.buf = append(c.buf, b...)
-	c.count += 1
-	assertMaxSize(c)
-	return true
 }
 
 func (c Chunk) MarshalPayload() []byte {
@@ -64,8 +37,8 @@ func (c Chunk) MarshalPayload() []byte {
 
 type Batcher struct {
 	chunks   []Chunk
-	length   int
-	next     int
+	full     []int
+	current  int
 	maxSize  int
 	maxCount int
 }
@@ -75,58 +48,62 @@ func NewBatcher(maxCount, maxSize int) *Batcher {
 	return &Batcher{maxSize: maxSize, maxCount: maxCount}
 }
 
-func (b *Batcher) Push(bet agency.Bet) {
-	if b.length == 0 {
-		b.addChunk()
+func (b *Batcher) Push(m protocol.Marshaler) {
+	if len(b.chunks) == 0 {
+		chunk := newChunk(b.maxCount, b.maxSize)
+		b.chunks = append(b.chunks, chunk)
 	}
-	betBytes := bet.MarshalPayload()
-	lastChunk := b.getLast()
-	if ok := lastChunk.tryPush(betBytes); !ok {
-		b.next = b.length - 1
-		lastChunk.full = true
-		b.addChunk()
-		lastChunk = b.getLast()
-		if ok := lastChunk.tryPush(betBytes); !ok {
-			panic("bigger batch size required")
-		}
+	chunk := &b.chunks[b.current]
+
+	payload := m.MarshalPayload()
+	payloadLen := uint32(len(payload))
+	lenBuf := make([]byte, 4)
+	binary.LittleEndian.PutUint32(lenBuf, payloadLen)
+	if len(payload)+len(lenBuf) >= b.maxSize {
+		panic("chunk is not big enough")
+	}
+
+	totalLen := len(chunk.buf) + len(lenBuf) + len(payload)
+	if totalLen >= b.maxSize {
+		b.chunks = append(b.chunks, newChunk(b.maxCount, b.maxSize))
+		b.full = append(b.full, b.current)
+		b.current++
+		chunk = &b.chunks[b.current]
+	}
+	chunk.buf = append(chunk.buf, lenBuf...)
+	chunk.buf = append(chunk.buf, payload...)
+	chunk.count += 1
+	chunk.full = chunk.count == b.maxCount
+	if chunk.full {
+		b.chunks = append(b.chunks, newChunk(b.maxCount, b.maxSize))
+		b.full = append(b.full, b.current)
+		b.current++
+		chunk = &b.chunks[b.current]
 	}
 }
 
-func (b *Batcher) addChunk() {
-	c := newChunk(b.maxCount, b.maxSize)
-	b.chunks = append(b.chunks, c)
-	b.length += 1
-}
-
-func removeUnordered(s []Chunk, i int) []Chunk {
+func removeOrdered(s []Chunk, i int) []Chunk {
 	return append(s[:i], s[i+1:]...)
 }
 
 func (b *Batcher) Next() (Chunk, bool) {
-	if b.length == 0 {
+	if len(b.full) == 0 {
 		return Chunk{}, false
 	}
-	nextIdx := b.next
-	nextChunk := b.chunks[nextIdx]
-	b.length = b.length - 1
-	b.chunks = removeUnordered(b.chunks, nextIdx)
-	idx := -1
-	for i, c := range b.chunks {
-		if c.full {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
-		return Chunk{}, false
-	}
-	return nextChunk, true
+
+	last := b.full[len(b.full)-1]
+	b.full = b.full[:len(b.full)-1]
+	chunk := b.chunks[last]
+	b.chunks = removeOrdered(b.chunks, last)
+	b.current--
+	return chunk, true
 }
 
-func (b *Batcher) getLast() *Chunk {
-	if b.length == 0 {
-		return nil
+func (b *Batcher) Flush() (Chunk, bool) {
+	if len(b.chunks) == 0 {
+		return Chunk{}, false
 	}
-	nextIdx := b.length - 1
-	return &b.chunks[nextIdx]
+	chunk := b.chunks[b.current]
+	b.chunks = removeOrdered(b.chunks, b.current)
+	return chunk, true
 }

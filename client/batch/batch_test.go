@@ -1,9 +1,10 @@
 package batch_test
 
 import (
-	"fmt"
-	"reflect"
+	"bytes"
+	"encoding/binary"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/batch"
+	"reflect"
 	"testing"
 )
 
@@ -13,8 +14,11 @@ type StubMarshaler struct {
 
 func (s *StubMarshaler) MarshalPayload() []byte {
 	s.cnt += 1
-	return []byte(fmt.Sprintf("payload: %d", s.cnt))
+	a := make([]byte, 4)
+	binary.LittleEndian.PutUint32(a, uint32(s.cnt))
+	return a
 }
+
 func TestBatcher(t *testing.T) {
 	const (
 		MaxCount = 3
@@ -22,20 +26,32 @@ func TestBatcher(t *testing.T) {
 	)
 	batcher := batch.NewBatcher(MaxCount, MaxSize)
 	stub := StubMarshaler{}
-	for i := 0; i < 9; i++ {
+	for i := 0; i < 3; i++ {
 		batcher.Push(&stub)
 	}
 
-	for i := 0; i < 3; i++ {
-		chunk, ok := batcher.Next()
-		if !ok {
-			t.Error("expected ok")
-		}
+	var buf bytes.Buffer
+	a := make([]byte, 4)
+	binary.LittleEndian.PutUint32(a, uint32(4))
+	buf.Write(a)
+	buf.Write([]byte{0x01, 0x00, 0x00, 0x00})
+	buf.Write(a)
+	buf.Write([]byte{0x02, 0x00, 0x00, 0x00})
+	buf.Write(a)
+	buf.Write([]byte{0x03, 0x00, 0x00, 0x00})
+	want := buf.Bytes()
+	chunk, ok := batcher.Next()
+	if !ok {
+		t.Error("expected ok")
+	}
 
-		want := "payload: 1payload: 2payload: 3"
-		got := chunk.MarshalPayload()
-		if !reflect.DeepEqual(got, []byte(want)) {
-			t.Errorf("got %v, want %v", string(got), want)
-		}
+	got := chunk.MarshalPayload()
+	if !reflect.DeepEqual(got, []byte(want)) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	batcher.Push(&stub)
+	_, ok = batcher.Next()
+	if ok {
+		t.Error("expected not ok")
 	}
 }
