@@ -122,9 +122,11 @@ func (b *BatchProcessor) batcherStart() <-chan BatchResult {
 				return
 			case r, more := <-b.bets:
 				if !more {
-					chunk, ok := b.batcher.Flush()
+					chunks, ok := b.batcher.Flush()
 					if ok {
-						resultCh <- BatchResult{Chunk: chunk}
+						for _, chunk := range chunks {
+							resultCh <- BatchResult{Chunk: chunk}
+						}
 					}
 					return
 				}

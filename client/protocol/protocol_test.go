@@ -146,9 +146,9 @@ func TestShortWrite(t *testing.T) {
 		t.Errorf("got %v, want %v", got.Bytes(), want.Bytes())
 	}
 
-	if w.calls != int(protocol.HeaderSize)+len(payload) {
-		fmt.Printf("%v\n", reflect.TypeOf(protocol.Header{}).Size())
-		t.Errorf("got %v, want %v", w.calls, int(protocol.HeaderSize)+len(payload))
+	if w.calls != int(protocol.RequestHeaderSize)+len(payload) {
+		fmt.Printf("%v\n", reflect.TypeOf(protocol.RequestHeader{}).Size())
+		t.Errorf("got %v, want %v", w.calls, int(protocol.RequestHeaderSize)+len(payload))
 	}
 }
 

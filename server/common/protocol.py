@@ -1,7 +1,6 @@
-from enum import Enum
+from enum import Enum, IntEnum
 import logging
 from typing import Union
-from typing import Optional
 from dataclasses import dataclass
 import common.utils as utils
 
@@ -23,11 +22,13 @@ class MessageKind(Enum):
     POST_BET = 0
     BET_BATCH = 1
     BET_BATCH_END = 2
-
+    GET_WINNERS = 3
 
 class BatchEnd:
     pass
 
+class GetWinners:
+    pass
 
 @dataclass
 class Header:
@@ -45,6 +46,15 @@ class Header:
         return cls(kind=kind, agency_id=agency_id, payload_size=payload_size)
 
 
+RequestUnion = Union[list[utils.Bet], BatchEnd, GetWinners]
+
+
+class ResponseKind(IntEnum):
+    ACKNOWLEDGE = 0
+    WINNERS_READY = 1
+    BETTING_RESULTS = 2
+    
+    
 class Request:
     header: Header
     payload: bytes
@@ -53,7 +63,7 @@ class Request:
         self.header = header
         self.payload = payload
 
-    def parse(self) -> Union[list[utils.Bet], BatchEnd]:
+    def parse(self) -> RequestUnion:
         bets = []
         if self.header.kind == MessageKind.BET_BATCH:
             try:
@@ -71,10 +81,31 @@ class Request:
                 raise BetParseError(len(bets))
         elif self.header.kind == MessageKind.BET_BATCH_END:
             return BatchEnd()
+        elif self.header.kind == MessageKind.GET_WINNERS:
+            return GetWinners()
         else:
             bets.append(parse_bet(self.payload, self.header.agency_id))
         return bets
 
+
+@dataclass
+class WinnersReady:
+    SIZE = 1
+    def encode(self) -> bytes:
+        return b''
+
+@dataclass
+class BettingResults:
+    bets: list[utils.Bet]
+
+    def encode(self) -> bytes:
+        payload_str = ""
+        for i, bet in enumerate(self.bets):
+            payload_str += f"{bet.document}"
+            if i < len(self.bets) - 1:
+                payload_str += ","
+                
+        return bytes(payload_str, 'utf-8')
 
 @dataclass
 class AcknowledgeResponse:
@@ -83,3 +114,24 @@ class AcknowledgeResponse:
 
     def encode(self) -> bytes:
         return int.to_bytes(self.bet_status, self.SIZE, byteorder='little')
+
+Response = Union[AcknowledgeResponse, WinnersReady, BettingResults]
+
+def encode(res: Response) -> bytes:
+    result = b''
+    if isinstance(res, AcknowledgeResponse):
+        result += int.to_bytes(ResponseKind.ACKNOWLEDGE, 1, byteorder='little')
+        result += int.to_bytes(1, 4, byteorder='little')
+        result += res.encode()
+    elif isinstance(res, WinnersReady):
+        result += int.to_bytes(ResponseKind.WINNERS_READY, 1, byteorder='little')
+        result += int.to_bytes(0, 4, byteorder='little')
+        result += res.encode()
+    elif isinstance(res, BettingResults):
+        result += int.to_bytes(ResponseKind.BETTING_RESULTS, 1, byteorder='little')
+        payload = res.encode()
+        result += int.to_bytes(len(payload), 4, byteorder='little')
+        result += payload
+    else:
+        assert False
+    return result

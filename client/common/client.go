@@ -2,12 +2,16 @@ package common
 
 import (
 	"bufio"
+	"fmt"
+	"net"
+	"os"
+	"strconv"
+	"time"
+
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/protocol"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/utils"
 	"github.com/op/go-logging"
-	"net"
-	"strconv"
-	"time"
+	"github.com/pkg/errors"
 )
 
 var log = logging.MustGetLogger("log")
@@ -58,14 +62,13 @@ func (c *Client) createClientSocket() error {
 }
 
 type ServerResponse struct {
-	ack protocol.BetAcknowledge
 	err error
 }
 
 type Request struct {
 	m    protocol.Marshaler
 	ID   uint32
-	kind protocol.MessageKind
+	kind protocol.RequestKind
 }
 
 // TODO(JUAN) change to SendRequest
@@ -77,39 +80,147 @@ func SendRequests(rw utils.DeadlineReadWriter, requests <-chan Request, timeout 
 	go func() {
 		var id uint32
 		defer close(responseChannel)
+		// Receive batches, create request and send them to server
+		log.Debug("starting to send requests")
 		for incoming := range requests {
 			req := protocol.NewBetRequest(incoming.kind, incoming.ID, incoming.m)
 			id = incoming.ID
-
-			rw.SetWriteDeadline(time.Now().Add(timeout))
+			// Send Request
+			rw.SetWriteDeadline(time.Now().Add(timeout))			
 			if err := protocol.EncodeRequest(w, req); err != nil {
 				responseChannel <- ServerResponse{err: err}
 				return
 			}
-
+			// Receive Response
 			w.Flush()
-			rw.SetReadDeadline(time.Now().Add(timeout))
-			ack, err := protocol.DecodeResponse(r)
+			// Expect ack
+			rw.SetReadDeadline(time.Now().Add(timeout))			
+			_, err := expectAcknowledge(r)
 			if err != nil {
 				responseChannel <- ServerResponse{err: err}
-				return
+				continue
 			}
-			responseChannel <- ServerResponse{ack: ack}
+
 		}
+		// Send end batches req
 		req := protocol.NewBetRequest(protocol.BetBatchStop, id, nil)
+		rw.SetWriteDeadline(time.Now().Add(timeout))
 		if err := protocol.EncodeRequest(w, req); err != nil {
 			responseChannel <- ServerResponse{err: err}
 			return
 		}
 		w.Flush()
-		ack, err := protocol.DecodeResponse(r)
+		// Process Response: expect ack
+		rw.SetReadDeadline(time.Now().Add(timeout))
+		_, err := expectAcknowledge(r)
 		if err != nil {
 			responseChannel <- ServerResponse{err: err}
 			return
 		}
-		responseChannel <- ServerResponse{ack: ack}
+		// Wait for ready
+		backoff := utils.Backoff{
+			Time:    time.Duration(500) * time.Millisecond,
+			Retries: 10,
+			Exp:     2,
+		}
+		readyPtr := new(protocol.Ready)
+		task := func() (bool, error) {
+			rw.SetReadDeadline(time.Now().Add(timeout))
+			ready, err := expectReady(r)
+			if err != nil {
+				if !errors.Is(err, os.ErrDeadlineExceeded) {
+					err = errors.Wrap(err, "couldn't receive ready")
+					return true, err
+				}
+				err = errors.Wrap(err, "retrying")
+				return false, err
+			}
+			*readyPtr = ready
+			return true, nil
+		}
+
+		onError := func(err error) {
+			log.Errorf("action: wait_ready | result: failure | client_id: %v | error: %", id, err)
+		}
+		if !backoff.Try(task, onError) {
+			log.Errorf("action: wait_ready | result: failure | client_id: %v | error: ready not received", id, err)
+			return
+		}
+
+		// Ask for winners
+		winners_req := protocol.NewBetRequest(protocol.BetGetWinners, id, nil)
+		rw.SetWriteDeadline(time.Now().Add(timeout))
+		if err := protocol.EncodeRequest(w, winners_req); err != nil {
+			responseChannel <- ServerResponse{err: err}
+			return
+		}
+		w.Flush()
+		rw.SetReadDeadline(time.Now().Add(timeout))
+		winners, err := expectWinners(r)
+		if err != nil {
+			responseChannel <- ServerResponse{err: err}
+			return
+		}
+		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners.DNIs))
 	}()
 	return responseChannel
+}
+
+func expectAcknowledge(r *bufio.Reader) (protocol.BetAcknowledge, error) {
+	var res protocol.BetResponse
+	err := res.DecodeResponse(r)
+	if err != nil {
+		return protocol.BetAcknowledge{}, err
+	}
+	u := res.GetType()
+	ack, ok := u.(*protocol.BetAcknowledge)
+	if !ok {
+		err := fmt.Errorf("wrong response: expected acknowledge")
+		return protocol.BetAcknowledge{}, err
+	}
+	if err := ack.UnmarshalPayload(res.Payload); err != nil {
+		err := errors.Wrap(err, "couldn't unmarshal acknowledge")
+		return protocol.BetAcknowledge{}, err
+	}
+	return *ack, nil
+}
+
+func expectReady(r *bufio.Reader) (protocol.Ready, error) {
+	var res protocol.BetResponse
+	err := res.DecodeResponse(r)
+	if err != nil {
+		return protocol.Ready{}, err
+	}
+	u := res.GetType()
+	ready, ok := u.(*protocol.Ready)
+	if !ok {
+		err := fmt.Errorf("wrong response: expected ready")
+		return protocol.Ready{}, err
+	}
+	if err := ready.UnmarshalPayload(res.Payload); err != nil {
+		err := errors.Wrap(err, "couldn't unmarshal ready")
+		return protocol.Ready{}, err
+	}
+	return *ready, nil
+}
+
+func expectWinners(r *bufio.Reader) (protocol.Winners, error) {
+	var res protocol.BetResponse
+	err := res.DecodeResponse(r)
+	if err != nil {
+		return protocol.Winners{}, err
+	}
+	u := res.GetType()
+	winners, ok := u.(*protocol.Winners)
+	if !ok {
+		err := fmt.Errorf("wrong response: expected winners")
+		return protocol.Winners{}, err
+	}
+	if err := winners.UnmarshalPayload(res.Payload); err != nil {
+		err := errors.Wrap(err, "couldn't unmarshal winners")
+		return protocol.Winners{}, err
+	}
+	return *winners, nil
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
