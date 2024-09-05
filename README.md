@@ -166,9 +166,9 @@ y los enviados desde el servidor
 ```
 
 Los tamaños (en bytes) de los campos fijos son
-	- *KIND*: 1 
-	- *AGENCYID*: 4
-	- *PAYLOAD_SIZE*: 4
+- *KIND*: 1 
+- *AGENCYID*: 4
+- *PAYLOAD_SIZE*: 4
 
 y los mismos estan codificados en _little endian_.
 
@@ -343,9 +343,9 @@ las apuestas y se pueda comenzar la eleccion de ganadores.
 
 # Notas
 Algunas aclaraciones de cosas que se podrian mejorar:
-	- Ciertos valores podrian ser variables de entorno para hacer al
+- Ciertos valores podrian ser variables de entorno para hacer al
       trabajo mas configurable
-	- Mas tests para el servidor especificamente
-    - Al correr las pruebas de la catedra algunos cambios no fueron
+- Mas tests para el servidor especificamente
+- Al correr las pruebas de la catedra algunos cambios no fueron
       propagados a branch posteriores si esto no era necesario para el
       funcionamiento del mismo por cuestiones de tiempo.
