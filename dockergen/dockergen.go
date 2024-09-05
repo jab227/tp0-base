@@ -46,7 +46,6 @@ func writeNetworkConfig(builder *strings.Builder) {
 
 func writeClient(builder *strings.Builder, id int) {
 	clientName := fmt.Sprintf("client%d", id)
-	clientIdEnv := fmt.Sprintf("CLI_ID=%d", id)
 
 	writeKeyValue(builder, 2, pair{key: clientName})
 	writeKeyValue(builder, 4, pair{key: "container_name", value: clientName})
