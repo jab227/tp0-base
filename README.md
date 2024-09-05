@@ -14,83 +14,18 @@ manera:
 La resolución de todos los ejercicios de la primera parte se encuentran en la branch `parte-1-docker`.
 
 #### Ejercicio 1
+En primer lugar presentamos un ejemplo de uso del script de generacion de DockerCompose:
 
-Para agregar un nuevo cliente al proyecto basta con copiar la
-definición del cliente original, modificando los datos que varían con
-el cliente como el _ID_.
-
-
-#### Ejercicio 1.1
-
-Para el script se decidió utilizar _go_, a continuación se presenta un ejemplo de uso:
 ```bash
-$ cd dockergen/
-$ export DOCKERGEN_NUMBER_OF_CLIENTS=3
-$ export DOCKERGEN_FILENAME=docker-compose.yaml
-$ export DOCKERGEN_COMPOSE_NAME=dockergen-example
-$ go run .
+$ ./generar-compose.sh docker-compose-dev.yaml 5
 ```
-
+esto creara un docker compose con el nombre `docker-compose-dev.yaml`, con cinco clientes (`client1`, `client2`,...,`client5`)
 La ejecución resulta en el siguiente archivo
 
+*(AGREGAR-EJECUCION)*
 ```yaml
-version: '3.9'
-name: dockergen-example
-services:
-  server:
-    container_name: server
-    image: server:latest
-    entrypoint: python3 /main.py
-    environment:
-      - PYTHONUNBUFFERED=1
-      - LOGGING_LEVEL=DEBUG
-    networks:
-      - testing_net
-  client1:
-    container_name: client1
-    image: client:latest
-    entrypoint: /client
-    environment:
-      - CLI_ID=1
-      - CLI_LOG_LEVEL=DEBUG
-    networks:
-      - testing_net
-    depends_on:
-      - server
-  client2:
-    container_name: client2
-    image: client:latest
-    entrypoint: /client
-    environment:
-      - CLI_ID=2
-      - CLI_LOG_LEVEL=DEBUG
-    networks:
-      - testing_net
-    depends_on:
-      - server
-  client3:
-    container_name: client3
-    image: client:latest
-    entrypoint: /client
-    environment:
-      - CLI_ID=3
-      - CLI_LOG_LEVEL=DEBUG
-    networks:
-      - testing_net
-    depends_on:
-      - server
-networks:
-  testing_net:
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.25.125.0/24
-```
-Las tres variables de entorno tienen como valores por defecto:
-	- `DOCKERGEN_NUMBER_OF_CLIENTS=1`
-	- `DOCKERGEN_FILENAME=docker-compose-dev.yaml`
-	- `DOCKERGEN_COMPOSE_NAME=tp0`
 
+```
 #### Ejercicio 2
 
 Para lograr que realizar cambios en los archivos de configuración no
@@ -113,32 +48,34 @@ con:
 
 `docker compose -f docker-compose-dev.yaml restart`
 
+Se modifico tambien el script de generacion de DockerCompose para soportar volumenes.
 
 #### Ejercicio 3
 
-Se utilizara el script `nc_test.sh` ubicado en la carpeta `scripts/`
-para interactuar con el EchoServer con el comando `netcat`. Este
-script envia distintos mensajes al servidor y prueba que la respuesta
-sea igual a lo que envió. Si ocurre algún problema al conectarse con
-el mismo, o recibe algo distinto a lo que envió, lo informara por
-_stdout_.
+Se utilizara el script `validar-echo-server.sh` para interactuar con
+el EchoServer con el comando `netcat`. Este script envia distintos
+mensajes al servidor y prueba que la respuesta sea igual a lo que
+envió. Si ocurre algún problema al conectarse con el mismo, o recibe
+algo distinto a lo que envió, lo informara por _stdout_.
 
 Para poder acceder a la red del servidor sin exponer puertos, se creo
-un nuevo servicio en el docker-compose, el cual depende del servidor y
-esta en la misma red, llamado `nctest` que ejecuta el script.  Un
-ejemplo de ejecución
+un nuevo docker-compose, `docker-compose-netcat.yaml` y un nuevo
+Dockerfile `Dockerfile_nc`. En el compose se crea un servicio `nctest`
+que es el encargado de correr el script y depende del servicio del
+server Un ejemplo de ejecución
 
+*(AGREGAR EJECUCION)*
 ```bash
-$ docker compose -f docker-compose-dev.yaml run nctest
-sent: "echo", received: "echo"
-sent: "server", received: "server"
-sent: "this", received: "this"
-sent: "should", received: "should"
-sent: "be", received: "be"
-sent: "the", received: "the"
-sent: "same", received: "same"
-all tests passed
+
 ```
+
+Por ultimo se agregaron nuevos targets al Makefile (siguiendo las
+convenciones de los target originales) para facilitar la ejecucion de
+esta prueba
+	- `make docker-compose-up-nc` para levantar el contenedor
+	- `make docker-compose-down-nc` para detener el contenedor
+	- `make docker-compose-logs-nc` para ver los logs
+	
 #### Ejercicio 4
 
 Para probar que tanto cliente como servidor terminan de forma
@@ -379,7 +316,7 @@ utilizara las funciones `load_bets(...)` y `has_won(...)` provistas
 por la cátedra para obtener y cachear los ganadores de cada agencia.
 
 ### Parte 3
-Para ver el código asociado a este ejercicio ver el branch `parte-3`
+Para ver el código asociado a este ejercicio ver el branch `ej8`
 
 En esta parte se pide que el servidor acepte y procese mensajes en
 paralelo. Utilizando la librería *multiprocessing* de python se
@@ -392,7 +329,7 @@ debe controlar el acceso a la función `load_bets(...)` ya que la misma
 no es thread-safe/process-safe. Se decidió por encapsular este estado
 y este comportamiento en la clase `BetsStorage` la cual se encarga de
 garantizar la serializabilidad de los accesos de lectura y escritura a
-el recurso. La implantación original, consistía en garantizar la
+el recurso. La implementación original, consistía en garantizar la
 serializabilidad utilizando un lock, `multiprocessing.Lock()`, pero
 debido a limitaciones de la librería esto no esta permitido al
 utilizar un pool. Por lo que se recurrió a crear un manager,
@@ -400,11 +337,7 @@ utilizar un pool. Por lo que se recurrió a crear un manager,
 manejar una versión centralizada de un objeto y proveer acceso al
 mismo.
 
-## Notas
-Dejo registrado algunos comentarios acerca del trabajo practico. En
-primer lugar la versión definitiva del código del protocolo ya sea en
-el cliente como en el servidor se encuentra en el branch
-`parte-3`. Algunas cosas que se podrían haber hecho mejor son trabajar
-con commits mas atómicos y haber trabajado con tags. También se
-podrían haber tests al servidor, lo cual hubiera evitado ciertos
-errores.
+
+Ademas se utilizo una barrera `multiprocessin.Barrier()` de manera tal
+de esperar a que todos los clientes hayan confirmado el envio de todas
+las apuestas y se pueda comenzar la eleccion de ganadores.
