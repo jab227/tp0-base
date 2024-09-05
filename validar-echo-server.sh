@@ -13,7 +13,7 @@ NETWORK="tp0_testing_net"
 MESSAGE="echo server: this should be the same"
 
 COMMAND=$(printf "%s" ${MESSAGE} | nc server ${SERVER_PORT})
-RECEIVED=$(docker run --rm --network ${NETWORK} alpine bash -c ${COMMAND})
+RECEIVED=$(docker run --rm --network ${NETWORK} alpine sh -c ${COMMAND})
 
 if [ "${RECEIVED}" -ne "${MESSAGE}" ]
 then
