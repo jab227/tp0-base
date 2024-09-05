@@ -10,8 +10,8 @@ fi
 
 MESSAGE="echo server: this should be the same"
 
-RECEIVED=$(printf "%s" "${MESSAGE}" | nc server ${SERVER_PORT} | tr -d '\n')
-if [ "${RECEIVED}" != "$m" ]
+RECEIVED=$(printf "%s" "${MESSAGE}" | nc 0.0.0.0 ${SERVER_PORT} | tr -d '\n')
+if [ "${RECEIVED}" != "${MESSAGE}" ]
 then
     echo "action: test_echo_server | result: fail"
     exit 1
