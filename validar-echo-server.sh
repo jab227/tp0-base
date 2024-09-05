@@ -1,7 +1,4 @@
-#!/usr/bin/env bash
-set -eu
-
-: ${SERVER_PORT=}
+#!/usr/bin/env sh
 
 if [ -z "${SERVER_PORT}" ]
 then
@@ -12,7 +9,7 @@ fi
 NETWORK="tp0_testing_net"
 MESSAGE="echo server: this should be the same"
 
-RECEIVED=$(docker run --rm --network ${NETWORK} alpine sh -c "printf "%s" ${MESSAGE} | nc server:${SERVER_PORT}"
+RECEIVED=$(docker run --rm --network tp0_testing_net alpine sh -c "echo \"${MESSAGE}\" | nc server:${SERVER_PORT}"
 
 if [ "${RECEIVED}" -ne "${MESSAGE}" ]
 then
