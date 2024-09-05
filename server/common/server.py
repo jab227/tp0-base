@@ -23,20 +23,20 @@ class Server:
 
         # TODO: Modify this program to handle signal to graceful shutdown
         # the server
-        while True:
-            client_sock = None
-            try:
+        client_sock = None                                    
+        try:
+            while True:
                 client_sock = self.__accept_new_connection()
                 self.__handle_client_connection(client_sock)
                 client_sock = None
-            except SignalSIGTERM as name:
-                logging.info(f'action: signal | result: success | msg: received {name.signal}')                                
-                self._server_socket.close()
-                logging.info(f'action: close_socket | result: success | msg: "closed server socket"')
-                if client_sock:
-                    client_sock.close()
-                    logging.info(f'action:_close socket | result: success | msg: "closed client socket"')
-                return
+        except SignalSIGTERM as name:
+            logging.info(f'action: signal | result: success | msg: received {name.signal}')                                
+        finally:
+            self._server_socket.close()
+            logging.info(f'action: close_socket | result: success | msg: "closed server socket"')
+            if client_sock:
+                client_sock.close()
+                logging.info(f'action:_close socket | result: success | msg: "closed client socket"')
 
     def __handle_client_connection(self, client_sock):
         """
