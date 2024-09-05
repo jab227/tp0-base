@@ -57,15 +57,17 @@ func (c *Client) createClientSocket() error {
 func (c *Client) StartClientLoop() {
 	// There is an autoincremental msgID to identify every message sent
 	// Messages if the message amount threshold has not been surpassed
+	defer func() {
+		if err := c.conn.Close(); err != nil {
+			log.Errorf("action: close_socket | result: failure | client_id: %v | error: %s", c.config.ID, err)
+		} else {
+			log.Infof("action: close_socket | result: success | client_id: %v | msg: closed client socket",
+				c.config.ID)
+		}
+	}()
 	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
 		select {
 		case <-c.doneCh:
-			if err := c.conn.Close(); err != nil {
-				log.Errorf("action: close_socket | result: failure | client_id: %v | error: %s", c.config.ID, err)
-			} else {
-				log.Infof("action: close_socket | result: success | client_id: %v | msg: closed client socket",
-					c.config.ID)
-			}
 			return
 		default:
 			ok := c.loop(msgID)
