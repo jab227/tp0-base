@@ -12,10 +12,12 @@ services:
   server:
     container_name: server
     image: server:latest
-    entrypoint: python3 /main.py
+    entrypoint: python3 ./main.py
     environment:
       - PYTHONUNBUFFERED=1
       - LOGGING_LEVEL=DEBUG
+    volumes:
+      - ./server:/echoserver
     networks:
       - testing_net
 networks:
@@ -40,10 +42,12 @@ services:
   server:
     container_name: server
     image: server:latest
-    entrypoint: python3 /main.py
+    entrypoint: python3 ./main.py
     environment:
       - PYTHONUNBUFFERED=1
       - LOGGING_LEVEL=DEBUG
+    volumes:
+      - ./server:/echoserver
     networks:
       - testing_net
   client1:
@@ -57,6 +61,8 @@ services:
       - testing_net
     depends_on:
       - server
+    volumes:
+      - ./client:/echoclient
   client2:
     container_name: client2
     image: client:latest
@@ -68,6 +74,8 @@ services:
       - testing_net
     depends_on:
       - server
+    volumes:
+      - ./client:/echoclient
   client3:
     container_name: client3
     image: client:latest
@@ -79,6 +87,8 @@ services:
       - testing_net
     depends_on:
       - server
+    volumes:
+      - ./client:/echoclient
 networks:
   testing_net:
     ipam:
@@ -97,5 +107,3 @@ networks:
 		}
 	})
 }
-
-
