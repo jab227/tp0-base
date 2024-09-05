@@ -1,8 +1,0 @@
-FROM debian:latest
-WORKDIR scripts
-
-COPY ./validar-echo-server.sh ./validar-echo-server.sh
-RUN apt-get update -y &&\
-    apt-get install netcat-traditional -y &&\
-    chmod +x ./validar-echo-server.sh
-ENTRYPOINT ["/bin/bash"]
