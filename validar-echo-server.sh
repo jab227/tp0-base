@@ -14,5 +14,6 @@ RECEIVED=$(docker run --rm --network tp0_testing_net alpine sh -c "echo \"${MESS
 if [ "${RECEIVED}" -ne "${MESSAGE}" ]
 then
     echo "action: test_echo_server | result: fail"
+else
+    echo "action: test_echo_server | result: success"
 fi
-echo "action: test_echo_server | result: success"
