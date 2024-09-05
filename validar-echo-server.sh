@@ -11,7 +11,7 @@ MESSAGE="echo server: this should be the same"
 
 RECEIVED=$(docker run --rm --network tp0_testing_net alpine sh -c "echo ${MESSAGE} | nc server:${SERVER_PORT}")
 
-if [ "${RECEIVED}" -ne "${MESSAGE}" ]
+if [ "${RECEIVED}" != "${MESSAGE}" ]
 then
     echo "action: test_echo_server | result: fail"
 else
