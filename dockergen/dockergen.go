@@ -46,18 +46,17 @@ func writeNetworkConfig(builder *strings.Builder) {
 
 func writeClient(builder *strings.Builder, id int) {
 	clientName := fmt.Sprintf("client%d", id)
-	clientIdEnv := fmt.Sprintf("CLI_ID=%d", id)
 
 	writeKeyValue(builder, 2, pair{key: clientName})
 	writeKeyValue(builder, 4, pair{key: "container_name", value: clientName})
 	writeKeyValue(builder, 4, pair{key: "image", value: "client:latest"})
 	writeKeyValue(builder, 4, pair{key: "entrypoint", value: "/client"})
-	writeKeyValue(builder, 4, pair{key: "environment"})
-	writeItemList(builder, 6, clientIdEnv, "CLI_LOG_LEVEL=DEBUG")
 	writeKeyValue(builder, 4, pair{key: "networks"})
 	writeItemList(builder, 6, "testing_net")
 	writeKeyValue(builder, 4, pair{key: "depends_on"})
 	writeItemList(builder, 6, "server")
+	writeKeyValue(builder, 4, pair{key: "volumes"})
+	writeItemList(builder, 6, "./client:/echoclient")
 }
 
 func writeItemList(builder *strings.Builder, ident int, values ...string) {
@@ -87,10 +86,10 @@ func writeServer(builder *strings.Builder) {
 	writeKeyValue(builder, 2, pair{key: "server"})
 	writeKeyValue(builder, 4, pair{key: "container_name", value: "server"})
 	writeKeyValue(builder, 4, pair{key: "image", value: "server:latest"})
-	writeKeyValue(builder, 4, pair{key: "entrypoint", value: "python3 /main.py"})
-	writeKeyValue(builder, 4, pair{key: "environment"})
-	writeItemList(builder, 6, "PYTHONUNBUFFERED=1", "LOGGING_LEVEL=DEBUG")
-	writeKeyValue(builder, 4, pair{key: "networks"})
+	writeKeyValue(builder, 4, pair{key: "entrypoint", value: "python3 ./main.py"})
+	writeKeyValue(builder, 4, pair{key: "volumes"})
+	writeItemList(builder, 6, "./server:/echoserver")
+	writeKeyValue(builder, 4, pair{key: "networks"})		
 	writeItemList(builder, 6, "testing_net")
 }
 
