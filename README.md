@@ -9,6 +9,12 @@ contrario en la sección correspondiente, se ejecutan de la siguiente
 - `make docker-compose-logs` para ver los logs de clientes y servidor
 - `make docker-compose-down` para detener los containers
 
+Para correr las pruebas de las catedra, es necesario compilar dockergen (script para generar DockerCompose)
+
+```go
+go -C ./dockergen -o dockergen
+```
+
 ### Parte 1
 
 #### Ejercicio 1
@@ -111,19 +117,6 @@ el EchoServer con el comando `netcat`. Este script envía distintos
 mensajes al servidor y prueba que la respuesta sea igual a lo que
 envió. Si ocurre algún problema al conectarse con el mismo, o recibe
 algo distinto a lo que envió, lo informara por _stdout_.
-
-Para poder acceder a la red del servidor sin exponer puertos, se creo
-un nuevo docker-compose, `docker-compose-netcat.yaml` y un nuevo
-Dockerfile `Dockerfile_nc`. En el compose se crea un servicio `nctest`
-que es el encargado de correr el script y depende del servicio del
-server.
-
-Por ultimo se agregaron nuevos targets al Makefile (siguiendo las
-convenciones de los target originales) para facilitar la ejecución de
-esta prueba
-	- `make docker-compose-up-nc` para levantar el contenedor
-	- `make docker-compose-down-nc` para detener el contenedor
-	- `make docker-compose-logs-nc` para ver los logs
 	
 #### Ejercicio 4
 
@@ -353,3 +346,6 @@ Algunas aclaraciones de cosas que se podrian mejorar:
 	- Ciertos valores podrian ser variables de entorno para hacer al
       trabajo mas configurable
 	- Mas tests para el servidor especificamente
+    - Al correr las pruebas de la catedra algunos cambios no fueron
+      propagados a branch posteriores si esto no era necesario para el
+      funcionamiento del mismo por cuestiones de tiempo.
