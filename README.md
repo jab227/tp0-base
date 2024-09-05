@@ -24,7 +24,64 @@ La ejecución resulta en el siguiente archivo
 
 *(AGREGAR-EJECUCION)*
 ```yaml
-
+name: tp0
+services:
+  server:
+    container_name: server
+    image: server:latest
+    entrypoint: python3 ./main.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOGGING_LEVEL=DEBUG
+    volumes:
+      - ./server:/echoserver
+    networks:
+      - testing_net
+  client1:
+    container_name: client1
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=1
+      - CLI_LOG_LEVEL=DEBUG
+    networks:
+      - testing_net
+    depends_on:
+      - server
+    volumes:
+      - ./client:/echoclient
+  client2:
+    container_name: client2
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=2
+      - CLI_LOG_LEVEL=DEBUG
+    networks:
+      - testing_net
+    depends_on:
+      - server
+    volumes:
+      - ./client:/echoclient
+  client3:
+    container_name: client3
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=3
+      - CLI_LOG_LEVEL=DEBUG
+    networks:
+      - testing_net
+    depends_on:
+      - server
+    volumes:
+      - ./client:/echoclient
+networks:
+  testing_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.25.125.0/24
 ```
 #### Ejercicio 2
 
@@ -62,12 +119,7 @@ Para poder acceder a la red del servidor sin exponer puertos, se creo
 un nuevo docker-compose, `docker-compose-netcat.yaml` y un nuevo
 Dockerfile `Dockerfile_nc`. En el compose se crea un servicio `nctest`
 que es el encargado de correr el script y depende del servicio del
-server Un ejemplo de ejecución
-
-*(AGREGAR EJECUCION)*
-```bash
-
-```
+server.
 
 Por ultimo se agregaron nuevos targets al Makefile (siguiendo las
 convenciones de los target originales) para facilitar la ejecucion de
