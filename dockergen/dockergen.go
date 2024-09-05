@@ -55,6 +55,8 @@ func writeClient(builder *strings.Builder, id int) {
 	writeItemList(builder, 6, "testing_net")
 	writeKeyValue(builder, 4, pair{key: "depends_on"})
 	writeItemList(builder, 6, "server")
+	writeKeyValue(builder, 4, pair{key: "volumes"})
+	writeItemList(builder, 6, "./client:/echoclient")
 }
 
 func writeItemList(builder *strings.Builder, ident int, values ...string) {
@@ -85,7 +87,9 @@ func writeServer(builder *strings.Builder) {
 	writeKeyValue(builder, 4, pair{key: "container_name", value: "server"})
 	writeKeyValue(builder, 4, pair{key: "image", value: "server:latest"})
 	writeKeyValue(builder, 4, pair{key: "entrypoint", value: "python3 ./main.py"})
-	writeKeyValue(builder, 4, pair{key: "networks"})
+	writeKeyValue(builder, 4, pair{key: "volumes"})
+	writeItemList(builder, 6, "./server:/echoserver")
+	writeKeyValue(builder, 4, pair{key: "networks"})		
 	writeItemList(builder, 6, "testing_net")
 }
 
