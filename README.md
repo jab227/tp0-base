@@ -3,7 +3,7 @@
 
 Para ejecutar los distintos ejercicios, salvo que se aclare lo
 contrario en la sección correspondiente, se ejecutan de la siguiente
-manera:
+	manera:
 - `make docker-compose-up` para inicializar tanto clientes como
   servidor
 - `make docker-compose-logs` para ver los logs de clientes y servidor
@@ -11,10 +11,8 @@ manera:
 
 ### Parte 1
 
-La resolución de todos los ejercicios de la primera parte se encuentran en la branch `parte-1-docker`.
-
 #### Ejercicio 1
-En primer lugar presentamos un ejemplo de uso del script de generacion de DockerCompose:
+En primer lugar presentamos un ejemplo de uso del script de generación de DockerCompose:
 
 ```bash
 $ ./generar-compose.sh docker-compose-dev.yaml 5
@@ -22,7 +20,6 @@ $ ./generar-compose.sh docker-compose-dev.yaml 5
 esto creara un docker compose con el nombre `docker-compose-dev.yaml`, con cinco clientes (`client1`, `client2`,...,`client5`)
 La ejecución resulta en el siguiente archivo
 
-*(AGREGAR-EJECUCION)*
 ```yaml
 name: tp0
 services:
@@ -105,12 +102,12 @@ con:
 
 `docker compose -f docker-compose-dev.yaml restart`
 
-Se modifico tambien el script de generacion de DockerCompose para soportar volumenes.
+Se modifico tambien el script de generación de DockerCompose para soportar volúmenes.
 
 #### Ejercicio 3
 
 Se utilizara el script `validar-echo-server.sh` para interactuar con
-el EchoServer con el comando `netcat`. Este script envia distintos
+el EchoServer con el comando `netcat`. Este script envía distintos
 mensajes al servidor y prueba que la respuesta sea igual a lo que
 envió. Si ocurre algún problema al conectarse con el mismo, o recibe
 algo distinto a lo que envió, lo informara por _stdout_.
@@ -122,7 +119,7 @@ que es el encargado de correr el script y depende del servicio del
 server.
 
 Por ultimo se agregaron nuevos targets al Makefile (siguiendo las
-convenciones de los target originales) para facilitar la ejecucion de
+convenciones de los target originales) para facilitar la ejecución de
 esta prueba
 	- `make docker-compose-up-nc` para levantar el contenedor
 	- `make docker-compose-down-nc` para detener el contenedor
@@ -146,44 +143,81 @@ servidor que el caso de uso denominado *Loteria Nacional*. El
 protocolo planteado fue evolucionando a medida que se agregaban
 requerimientos en los distintos ejercicios.
 
-En el protocolo diseñado todos los mensajes tienen esta forma
+En el protocolo diseñado todos los mensajes enviados desde el cliente
+tienen esta forma
 
 ```
-   1 Byte      Variable Length
-+------------+-----------------+
-|MESSAGE_KIND| MESSAGE_PAYLOAD |
-+------------+-----------------+
++-------+--------------------+----------------------+
+|       |                    |                      |
+| KIND  |     AGENCYID       |     PAYLOAD_SIZE     |
+|       |                    |                      |
++-------+--------------------+----------------------+
+|                                                   |
+|               VARIABLE_PAYLOAD                    |
+|                                                   |
++---------------------------------------------------+
 ```
 
-done los valores posibles de *MESSAGE_KIND* son
+y los enviados desde el servidor
+
+```
++------------------------+--------------------------+
+|                        |                          |
+|          KIND          |       PAYLOAD_SIZE       |
+|                        |                          |
++------------------------+--------------------------+
+|                                                   |
+|               VARIABLE_PAYLOAD                    |
+|                                                   |
++---------------------------------------------------+
+```
+
+Los tamaños (en bytes) de los campos fijos son
+	- *KIND*: 1 
+	- *AGENCYID*: 4
+	- *PAYLOAD_SIZE*: 4
+
+y los mismos estan codificados en _little endian_.
+
+Los valores posibles de *KIND* son para los requests del client
 ```
 +---------------------+-------+
-| MESSAGE_KIND        | Value |
+| KIND                | Value |
 +---------------------+-------+
-| BET                 |   0   |
+| POST_BET            |   0   |
 +---------------------+-------+
-| ACKNOWLEDGE         |   1   |
+| BET_BATCH           |   1   |
 +---------------------+-------+
-| DONE                |   2   |
+| BET_BATCH_END       |   2   |
 +---------------------+-------+
-| WINNERS             |   3   |
+| GET_WINNERS         |   3   |
 +---------------------+-------+
-| WINNERS_UNAVAILABLE |   4   |
+```
+
+mientras que los responses del servidor
+
+```
 +---------------------+-------+
-| WINNERS_LIST        |   5   |
+| KIND                | Value |
++---------------------+-------+
+| ACKNOWLEDGE         |   0   |
++---------------------+-------+
+| WINNERS_READY       |   1   |
++---------------------+-------+
+| BETTING_RESULTS     |   2   |
 +---------------------+-------+
 ```
 
 #### Ejercicio 5
-Para ver el código asociado a este ejercicio ver el branch `parte-2-ejercicio-5`
+Para ver el código asociado a este ejercicio ver el branch `ej5`
 
 Para publicar una apuesta se manda el mensaje de *BET* al servidor
 
 ```
    1 Byte    4 Bytes        4 Bytes        PAYLOAD_SIZE bytes
-+----------+--------------+--------------+---------------------+
-| KIND=BET | PAYLOAD_SIZE |  AGENCY_ID   |  PAYLOAD            |
-+----------+--------------+--------------+---------------------+
++---------------+----------+--------------+-------------------+
+| KIND=POST_BET | AGENCYID | PAYLOAD_SIZE |      PAYLOAD      |
++--------------+-----------+--------------+-------------------+
 ```
 
 donde *PAYLOAD_SIZE* y *AGENCY_ID* son un *uint32* en _Little Endian__
@@ -223,69 +257,38 @@ el docker-compose:
 
 #### Ejercicio 6
 Para ver el código asociado a este ejercicio ver el branch
-`parte-2-ejercicio-6`. Además es necesario descomprimir los contenidos
-del archivo `.data/datasets.zip` en el root del proyecto, si se quiere
+`ej6`. Además es necesario descomprimir los contenidos
+del archivo `.data/datasets.zip` en la misma carpeta (`.data/datasets`), si se quiere
 ejecutar los clientes.
 
 Ahora se requiere leer las apuestas desde archivos provistos por la
 cátedra, y que en una misma consulta se puedan enviar múltiples
-apuestas. El tamaño de los batchs es configurable a través de la
-variable de entorno:
+apuestas. El tamaño de los batchs es configurable a través del campo
+`maxAmount` en el archivo `config.yaml`
 
-- `CLI_BATCH_SIZE=${Size}`
+Un punto a tener en cuenta es que si el tamaño del mensaje a enviar
+superara los 8kB (teniendo en cuenta los bytes asociados al tipo de
+mensaje) puede ocurrir que se envié una cantidad menor de
+apuestas. Esto también sucede si la cantidad de apuestas total no es
+divisible por la cantidad de batchs.
 
-si no la encuentra el valor por defecto es 16. Un punto a tener en
-cuenta es que si el tamaño del mensaje a enviar superara los 8kB
-(teniendo en cuenta los bytes asociados al tipo de mensaje) puede
-ocurrir que se envié una cantidad menor de apuestas. Esto también
-sucede si la cantidad de apuestas total no es divisible por la
-cantidad de batchs.
-
-Soportar el envió de múltiples apuestas en un request, requirió
-modificar el mensaje de *BET*, el cual toma ahora la siguiente forma:
-
-```
-  1 Byte     4 Byte         4 Byte         PAYLOAD_SIZE Bytes
-+----------+--------------+---------------+----------------------+
-| KIND=BET | PAYLOAD_SIZE |   BET_COUNT   | PAYLOAD              |
-+----------+--------------+---------------+----------------------+
-```
-
-Se agrega ahora el campo *BET_COUNT* que cuenta cuantas apuestas
-fueron enviadas, nuevamente este campo es un *uint32* en _Little
-Endian_. También cambia como se serializa el payload, ahora toda
-apuesta va a estar delimitada por un `\n`, ignorando la ultima.
-
+Soportar el envió de múltiples apuestas en un request, requirió crear
+el mensaje de *BET_BATCH*. Para serializar las distintas apuestas
+dentro de un batch/chunk, se encapsularon las mismas dentro de un
+paquete con la siguiente forma
 
 ```
-NOMBRE_1,APELLIDO_1,DOCUMENTO_1,NACIMIENTO_1,NUMERO_1\n
-NOMBRE_2,APELLIDO_2,DOCUMENTO_2,NACIMIENTO_2,NUMERO_2\n
-NOMBRE_3,APELLIDO_3,DOCUMENTO_3,NACIMIENTO_3,NUMERO_3\n
-...
-NOMBRE_N,APELLIDO_N,DOCUMENTO_N,NACIMIENTO_N,NUMERO_N\n
+ 4 Byte 
++------+-------------+------+-------------+--------+------+-------------+
+| SIZE | BET_PAYLOAD | SIZE | BET_PAYLOAD |  ....  | SIZE | BET_PAYLOAD |
++------+-------------+------+-------------+--------+------+-------------+
 ```
 
-El mensaje de *ACKNOWLEDGE* tambien se modifico
+Este nuevo formato permite identificar donde comienza y termina una nueva apuesta.
 
-```
-     1 Byte          4 Bytes         BET_COUNT * 4 Bytes
-+------------------+--------------+----------------------+
-| KIND=ACKNOWLEDGE | BET_COUNT    | BET_NUMBERS          |
-+------------------+--------------+----------------------+
-```
-
-Donde al igual que en *BET* se agrega el campo *BET_COUNT*, y también
-el campo *BET_NUMBERS* el cual es una lista de uint32 codificados en
-_Little Endian_ de longitud *BET_COUNT*.
-
-Por ultimo se agrego el mensaje *DONE* para que el cliente señale que se envió el
+Por ultimo se agrego el mensaje *BET_BATCH_END* para que el cliente señale que se envió el
 ultimo batch.
-```
-    1 Byte
-+-----------------+
-| KIND=DONE       |
-+-----------------+
-```
+
 Una vez recibido el servidor cierra la conexión.
 
 Se agrega también la posibilidad de controlar el timeout de los
@@ -298,74 +301,25 @@ La misma espera siempre un valor.
 #### Ejercicio 7
 
 Para ver el código asociado a este ejercicio ver el branch
-`parte-2-ejercicio-7`
+`ej7`
 
 Ahora los clientes van a poder consultarle al servidor por la lista de
 ganadores correspondiente a la agencia asociada, inmediatamente
-después de enviar el mensaje de *DONE*. Para realizar esta consulta se
-agrega un nuevo mensaje, *WINNERS*
-
-```
-   1 Byte            4 Bytes
-+---------------+--------------------+
-| KIND=WINNERS  |    AGENCY_ID       |
-+---------------+--------------------+
-
-```
-
-En este mensaje se envía el ID de la agencia que esta solicitando los
-ganadores como un *uint32* codificado en _Little Endian_. El mismo
-campo se le agrega al mensaje de *DONE*
-
-```
-   1 Byte            4 Bytes
-+---------------+--------------------+
-| KIND=DONE     |    AGENCY_ID       |
-+---------------+--------------------+
-```
-
+después de enviar el mensaje de *BET_BATCH_END*. Para realizar esta
+consulta se agrega un nuevo mensaje, *GET_WINNERS*. 
 
 Antes de poder contestar este mensaje el servidor debe confirmar que
-todas las agencias registraron todas sus apuestas. Cualquier consulta
-por los ganadores previa a este escenario, recibirá como respuesta el
-mensaje *WINNERS_UNAVAILABLE*.
+todas las agencias registraron todas sus apuestas. Por lo tanto los
+clientes deben esperar a que el servidor envie el mensaje de
+*WINNERS_READY* antes de poder preguntar por los mismos. Para que no
+esperen para siempre se implemento una estrategia de backoff.
 
-```
-    1 Byte
-+--------------------------------+
-| KIND=WINNERS_UNAVAILABLE       |
-+--------------------------------+
-```
-
-Una vez que se tienen todas las apuestas de todas las agencias, el
-servidor puede contestar a el mensaje de *WINNERS* con el siguiente
-mensaje
-
-```
-      1 Byte            4 Bytes       4 Bytes        PAYLOAD_SIZE Bytes
-+-------------------+---------------+--------------+--------------------------+
-| KIND=WINNERS_LIST | WINNERS_COUNT | PAYLOAD_SIZE | PAYLOAD                  |
-+-------------------+---------------+--------------+--------------------------+
-```
-
-done tanto *WINNERS_COUNT* como *PAYLOAD_SIZE* son uint32 codificados
-en _Little Endian_.  El payload en este caso se corresponde a los DNIs
+El payload para *GET_WINNERS* se corresponde a los DNIs
 de los ganadores serializados de la siguiente forma
 
 ```
 DNI_1,DNI_2,DNI_3,...,DNI_N
 ```
-
-El cliente deberá reintentar la consulta si recibe un
-*WINNERS_UNAVAILABLE*. Para esto se implementa una estrategia de
-backoff configurable a través de las siguientes variables de entorno:
-
-- `CLI_MAX_RETRIES=${number}`
-- `CLI_BACKOFF=${duration}`
-
-Una vez recibido todos los *DONE* desde las agencias, el servidor
-utilizara las funciones `load_bets(...)` y `has_won(...)` provistas
-por la cátedra para obtener y cachear los ganadores de cada agencia.
 
 ### Parte 3
 Para ver el código asociado a este ejercicio ver el branch `ej8`
@@ -393,3 +347,9 @@ mismo.
 Ademas se utilizo una barrera `multiprocessin.Barrier()` de manera tal
 de esperar a que todos los clientes hayan confirmado el envio de todas
 las apuestas y se pueda comenzar la eleccion de ganadores.
+
+# Notas
+Algunas aclaraciones de cosas que se podrian mejorar:
+	- Ciertos valores podrian ser variables de entorno para hacer al
+      trabajo mas configurable
+	- Mas tests para el servidor especificamente
